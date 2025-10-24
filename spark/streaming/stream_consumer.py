@@ -1,33 +1,20 @@
-from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, from_json
-from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.spark_utils import create_spark_session, get_ecommerce_schema, get_kafka_config
 
 
 def main():
-    spark = SparkSession.builder \
-        .appName("Structured Streaming Consumer") \
-        .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0") \
-        .master("local[*]") \
-        .getOrCreate()
+    spark = create_spark_session("Structured Streaming Consumer")
+    schema = get_ecommerce_schema()
+    kafka_config = get_kafka_config()
+    
+    kafka_bootstrap_servers = kafka_config["bootstrap_servers"]
+    kafka_topic = kafka_config["topic"]
 
-    spark.sparkContext.setLogLevel('WARN')
-
-    schema = StructType([
-        StructField("event_time", StringType(), True),
-        StructField("event_type", StringType(), True),
-        StructField("product_id", LongType(), True),
-        StructField("category_id", LongType(), True),
-        StructField("category_code", StringType(), True),
-        StructField("brand", StringType(), True),
-        StructField("price", DoubleType(), True),
-        StructField("user_id", LongType(), True),
-        StructField("user_session", StringType(), True)
-    ])
-
-    kafka_bootstrap_servers = "localhost:9092"
-    kafka_topic = "ecommerce_data"
-
-    df_raw = spark.readStream \
+    df_stream = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", kafka_bootstrap_servers) \
         .option("subscribe", kafka_topic) \
@@ -35,13 +22,11 @@ def main():
         .option("failOnDataLoss", "false") \
         .load()
 
-    # Parse JSON
-    df_parsed = df_raw.select(
+    df_parsed = df_stream.select(
         col("key").cast("string"),
         from_json(col("value").cast("string"), schema).alias("data"),
         col("timestamp").alias("kafka_timestamp")
     ).select(
-        "key",
         "data.*",
         "kafka_timestamp"
     )
