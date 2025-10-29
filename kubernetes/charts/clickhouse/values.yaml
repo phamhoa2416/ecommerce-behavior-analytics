@@ -1,0 +1,45 @@
+clickhouse:
+  name: clickhouse
+
+  replicas: 1
+
+  image:
+    repository: yandex/clickhouse-server
+    tag: "21.2.5"
+    imagePullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    httpPort: 8123
+    tcpPort: 9000
+    interserverPort: 9001
+
+  ingress:
+    enabled: false
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+
+  auth:
+    username: admin
+    password: password
+    database: ecommerce
+    defaultAccessManagement: "1"
+
+  healthcheck:
+    enabled: true
+    startPeriod: 60
+    interval: 10
+    timeout: 5
+    retries: 3
