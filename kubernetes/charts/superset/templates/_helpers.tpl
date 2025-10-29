@@ -1,4 +1,3 @@
-# templates/_helpers.tpl
 {{/*
 Expand the name of the chart.
 */}}

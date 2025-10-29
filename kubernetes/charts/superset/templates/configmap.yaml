@@ -93,7 +93,5 @@ data:
     CLICKHOUSE_PASSWORD = "{{ .Values.superset.env.clickhouse.password }}"
     CLICKHOUSE_PROTOCOL = "{{ .Values.superset.env.clickhouse.protocol }}"
 
-    # Pre-configured ClickHouse database
-    # Users can add this manually or via API
     CLICKHOUSE_URI = f"clickhousedb://{CLICKHOUSE_USER}:{CLICKHOUSE_PASSWORD}@{CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}/{CLICKHOUSE_DATABASE}"
     {{- end }}
