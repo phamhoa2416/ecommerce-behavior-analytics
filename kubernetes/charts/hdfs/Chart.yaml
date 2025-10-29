@@ -1,0 +1,10 @@
+apiVersion: v2
+name: hdfs
+description: A Helm chart for Hadoop HDFS cluster
+type: application
+version: 0.1.0
+appVersion: "3.2.1"
+keywords:
+  - hadoop
+  - hdfs
+  - big-data
