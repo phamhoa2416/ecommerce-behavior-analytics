@@ -5,6 +5,18 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.spark_utils import create_spark_session, get_ecommerce_schema, get_kafka_config
 
+def write_to_clickhouse(batch_df, batch_id):
+    clickhouse_url = "jdbc:clickhouse://localhost:8123/default"
+    clickhouse_properties = {
+        "user": "admin",
+        "password": "password",
+        "driver": "com.clickhouse.jdbc.ClickHouseDriver"
+    }
+
+    batch_df.write \
+    .mode("append") \
+    .jdbc(url=clickhouse_url, table="ecommerce_data", properties=clickhouse_properties)
+
 
 def main():
     spark = create_spark_session("Structured Streaming Consumer")
@@ -31,13 +43,10 @@ def main():
         "kafka_timestamp"
     )
 
-    # Ghi dữ liệu ra console (streaming output)
     query = df_parsed.writeStream \
         .outputMode("append") \
-        .format("console") \
-        .option("truncate", "false") \
-        .option("numRows", 10) \
-        .option("checkpointLocation", "/tmp/checkpoint") \
+        .foreachBatch(write_to_clickhouse) \
+        .option("checkpointLocation", "/tmp/checkpoint_clickhouse") \
         .start()
 
     query.awaitTermination()
