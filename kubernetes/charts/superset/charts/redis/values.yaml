@@ -1,0 +1,31 @@
+redis:
+  replicaCount: 1
+
+  name: redis
+
+  image:
+    repository: redis
+    tag: "7.2.0"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 6379
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+
+  config:
+    password: "redispassword"
+    maxmemory: "256mb"
+    maxmemoryPolicy: "allkeys-lru"
