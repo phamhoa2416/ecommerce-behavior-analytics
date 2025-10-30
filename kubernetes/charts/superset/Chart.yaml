@@ -10,3 +10,7 @@ keywords:
   - analytics
   - bi
   - clickhouse
+dependencies:
+  - name: redis
+    version: 0.1.0
+    repository: "file://./redis"
