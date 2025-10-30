@@ -1,0 +1,66 @@
+trino:
+  name: trino
+
+  coordinator:
+    replicas: 1
+    image:
+      repository: trinodb/trino
+      tag: "435"
+      pullPolicy: IfNotPresent
+
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+    jvm:
+      maxHeapSize: "3G"
+      gcMethod:
+        type: "UseG1GC"
+        g1:
+          heapRegionSize: "32M"
+
+  worker:
+    replicas: 2
+    image:
+      repository: trinodb/trino
+      tag: "435"
+      pullPolicy: IfNotPresent
+
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+
+    jvm:
+      maxHeapSize: "3G"
+      gcMethod:
+        type: "UseG1GC"
+        g1:
+          heapRegionSize: "32M"
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  hdfs:
+    namenode:
+      host: hadoop-namenode
+      rpcPort: 9000
+      webPort: 9870
+    replication: 1
+
+  catalogs:
+    hive:
+      enabled: true
+      metastore:
+        uri: "thrift://hive-metastore:9083"
+      hdfs:
+        configResources: "/etc/hadoop/core-site.xml,/etc/hadoop/hdfs-site.xml"
+

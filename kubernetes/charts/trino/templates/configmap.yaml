@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trino.name" . }}-catalog
+  labels:
+    {{ include "trino.labels" . | nindent 4 }}
+data:
+  hive.properties: |
+    connector.name=hive
+    hive.metastore.uri={{ .Values.trino.catalogs.hive.metastore.uri }}
+    hive.config.resources={{ .Values.trino.catalogs.hive.hdfs.configResources }}
+    hive.non-managed-table-writes-enabled=true
+    hive.allow-drop-table=true
+    hive.allow-rename-table=true
