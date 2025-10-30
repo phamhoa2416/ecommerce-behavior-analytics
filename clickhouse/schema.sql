@@ -1,11 +1,19 @@
-CREATE TABLE ecommerce_data (
-    order_id String,
-    user_id String,
-    product_id String,
-    quantity Int32,
-    price Float64,
-    event_time DateTime,
-    kafka_timestamp DateTime
+-- =============================
+-- Main E-commerce Events Table
+-- =============================
+CREATE TABLE ecommerce_events
+(
+    event_time    DateTime,
+    event_type    String,
+    product_id    UInt64,
+    category_id   UInt64,
+    category_code String,
+    brand         String,
+    price         Float64,
+    user_id       UInt64,
+    user_session  String
 )
-ENGINE = MergeTree()
-ORDER BY event_time;
+    ENGINE = MergeTree()
+        PARTITION BY toYYYYMM(event_time)
+        ORDER BY (event_time, user_id);
+
