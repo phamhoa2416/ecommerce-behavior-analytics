@@ -1,6 +1,5 @@
 kafka:
-  nameOverride: ""
-  fullnameOverride: ""
+  name: kafka
 
   replicas: 1
 
