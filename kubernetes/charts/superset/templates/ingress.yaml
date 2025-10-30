@@ -2,7 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "superset.fullname" . }}
+  name: {{ include "superset.name" . }}
   labels:
     {{ include "superset.labels" . | nindent 4 }}
   {{- with .Values.superset.ingress.annotations }}
@@ -33,7 +33,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "superset.fullname" $ }}
+                name: {{ include "superset.name" $ }}
                 port:
                   number: {{ $.Values.superset.service.port }}
           {{- end }}
