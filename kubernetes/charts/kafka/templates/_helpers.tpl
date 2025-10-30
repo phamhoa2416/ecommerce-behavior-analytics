@@ -2,23 +2,7 @@
 Expand the name of the chart.
 */}}
 {{ define "kafka.name" -}}
-{{ default .Chart.Name .Values.kafka.nameOverride | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/*
-Create a default fully qualified app name.
-*/}}
-{{ define "kafka.fullname" -}}
-{{- if .Values.kafka.fullnameOverride }}
-{{ .Values.kafka.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- $name := default .Chart.Name .Values.kafka.nameOverride }}
-{{- if contains $name .Release.Name }}
-{{ .Release.Name | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{ printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
-{{- end }}
+{{ default .Chart.Name .Values.kafka.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -52,12 +36,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Kafka service name
 */}}
 {{ define "kafka.service.name" -}}
-{{ include "kafka.fullname" . }}-kafka
+{{ include "kafka.name" . }}
 {{- end }}
 
 {{/*
 Kafka UI service name
 */}}
 {{ define "kafka-ui.service.name" -}}
-{{ include "kafka.fullname" . }}-ui
+{{ include "kafka.name" . }}-ui
 {{- end }}
