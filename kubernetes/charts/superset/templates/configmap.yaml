@@ -1,18 +1,27 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "superset.fullname" . }}-config
+  name: {{ include "superset.name" . }}-config
   labels:
     {{ include "superset.labels" . | nindent 4 }}
 data:
   superset_config.py: |
     import os
 
-    # Flask App Builder configuration
     APP_NAME = "Apache Superset"
 
-    # Flask secret key
-    SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'changeme')
+    SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'your_secret_key_here')
+
+    TALISMAN_ENABLED = True
+    TALISMAN_CONFIG = {
+        'content_security_policy': {
+            'default-src': ["'self'"],
+            'script-src': ["'self'", "'unsafe-inline'"],
+            'style-src': ["'self'", "'unsafe-inline'"],
+        },
+        'force_https': False,
+        'force_https_permanent': False
+    }
 
     # SQLAlchemy database URI
     {{- if .Values.superset.env.database.host }}
@@ -21,17 +30,16 @@ data:
     SQLALCHEMY_DATABASE_URI = 'sqlite:////app/superset_home/superset.db'
     {{- end }}
 
-    # Flask-WTF flag for CSRF
     WTF_CSRF_ENABLED = True
     WTF_CSRF_TIME_LIMIT = None
 
-    # Set this API key to enable Mapbox visualizations
     MAPBOX_API_KEY = os.environ.get('MAPBOX_API_KEY', '')
 
     {{- if .Values.superset.env.redis.enabled }}
     # Redis configuration
-    REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
-    REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
+    REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
+    REDIS_PORT = os.environ.get('REDIS_PORT', '6379')
+    REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', 'redispassword')
 
     # Cache configuration
     CACHE_CONFIG = {
@@ -40,42 +48,57 @@ data:
         'CACHE_KEY_PREFIX': 'superset_',
         'CACHE_REDIS_HOST': REDIS_HOST,
         'CACHE_REDIS_PORT': REDIS_PORT,
+        'CACHE_REDIS_PASSWORD': REDIS_PASSWORD,
+        'CACHE_REDIS_DB': 0,
     }
 
-    # Celery configuration
-    class CeleryConfig:
-        broker_url = f'redis://{REDIS_HOST}:{REDIS_PORT}/0'
-        result_backend = f'redis://{REDIS_HOST}:{REDIS_PORT}/1'
+    DATA_CACHE_CONFIG = {
+        'CACHE_TYPE': 'RedisCache',
+        'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hours
+        'CACHE_KEY_PREFIX': 'superset_data_',
+        'CACHE_REDIS_HOST': REDIS_HOST,
+        'CACHE_REDIS_PORT': REDIS_PORT,
+        'CACHE_REDIS_PASSWORD': REDIS_PASSWORD,
+        'CACHE_REDIS_DB': 1,
+    }
 
-    CELERY_CONFIG = CeleryConfig
-    {{- else }}
-    # Simple cache (no Redis)
-    CACHE_CONFIG = {
-        'CACHE_TYPE': 'SimpleCache',
-        'CACHE_DEFAULT_TIMEOUT': 300,
+    FILTER_STATE_CACHE_CONFIG = {
+        'CACHE_TYPE': 'RedisCache',
+        'CACHE_DEFAULT_TIMEOUT': 86400,
+        'CACHE_KEY_PREFIX': 'superset_filter_',
+        'CACHE_REDIS_HOST': REDIS_HOST,
+        'CACHE_REDIS_PORT': REDIS_PORT,
+        'CACHE_REDIS_PASSWORD': REDIS_PASSWORD,
+        'CACHE_REDIS_DB': 2,
+    }
+
+    EXPLORE_FORM_DATA_CACHE_CONFIG = {
+        'CACHE_TYPE': 'RedisCache',
+        'CACHE_DEFAULT_TIMEOUT': 86400,
+        'CACHE_KEY_PREFIX': 'superset_explore_',
+        'CACHE_REDIS_HOST': REDIS_HOST,
+        'CACHE_REDIS_PORT': REDIS_PORT,
+        'CACHE_REDIS_PASSWORD': REDIS_PASSWORD,
+        'CACHE_REDIS_DB': 3,
     }
     {{- end }}
 
-    # Superset webserver configuration
     SUPERSET_WEBSERVER_PORT = 8088
     SUPERSET_WEBSERVER_TIMEOUT = 120
 
-    # Enable feature flags
     FEATURE_FLAGS = {
         "ENABLE_TEMPLATE_PROCESSING": True,
         "DASHBOARD_NATIVE_FILTERS": True,
         "DASHBOARD_CROSS_FILTERS": True,
         "DASHBOARD_NATIVE_FILTERS_SET": True,
+        "DASHBOARD_CACHE": True,
     }
 
-    # Row limit for queries
     ROW_LIMIT = 50000
 
-    # SQL Lab configuration
     SUPERSET_WEBSERVER_TIMEOUT = 300
     SQLLAB_TIMEOUT = 300
 
-    # Enable CORS
     ENABLE_CORS = True
     CORS_OPTIONS = {
         'supports_credentials': True,
@@ -85,7 +108,6 @@ data:
     }
 
     {{- if .Values.superset.env.clickhouse.enabled }}
-    # ClickHouse database configuration
     CLICKHOUSE_HOST = "{{ .Values.superset.env.clickhouse.host }}"
     CLICKHOUSE_PORT = "{{ .Values.superset.env.clickhouse.port }}"
     CLICKHOUSE_DATABASE = "{{ .Values.superset.env.clickhouse.database }}"
