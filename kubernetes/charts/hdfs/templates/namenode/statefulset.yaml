@@ -19,70 +19,70 @@ spec:
         component: namenode
     spec:
       containers:
-      - name: namenode
-        image: "{{ .Values.hdfs.namenode.image.repository }}:{{ .Values.hdfs.namenode.image.tag }}"
-        imagePullPolicy: {{ .Values.hdfs.namenode.image.imagePullPolicy }}
-        ports:
-        - name: web
-          containerPort: {{ .Values.hdfs.namenode.service.webPort }}
-          protocol: TCP
-        - name: rpc
-          containerPort: {{ .Values.hdfs.namenode.service.rpcPort }}
-          protocol: TCP
-        env:
-        - name: CLUSTER_NAME
-          value: {{ .Values.hdfs.namenode.env.clusterName | quote }}
-        - name: CORE_CONF_fs_defaultFS
-          value: "hdfs://{{ include "hdfs.name" . }}-namenode:{{ .Values.hdfs.namenode.service.rpcPort }}"
-        - name: CORE_CONF_hadoop_http_staticuser_user
-          value: "root"
-        - name: HDFS_CONF_dfs_webhdfs_enabled
-          value: {{ .Values.hdfs.namenode.env.webhdfsEnabled | quote }}
-        - name: HDFS_CONF_dfs_permissions_enabled
-          value: {{ .Values.hdfs.namenode.env.permissionsEnabled | quote }}
-        - name: HDFS_CONF_dfs_replication
-          value: {{ .Values.hdfs.namenode.env.dfsReplication | quote }}
-        - name: HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check
-          value: "false"
-        volumeMounts:
-        - name: data
-          mountPath: /hadoop/dfs/name
-        resources:
+        - name: namenode
+          image: "{{ .Values.hdfs.namenode.image.repository }}:{{ .Values.hdfs.namenode.image.tag }}"
+          imagePullPolicy: {{ .Values.hdfs.namenode.image.imagePullPolicy }}
+          ports:
+            - name: web
+              containerPort: {{ .Values.hdfs.namenode.service.webPort }}
+              protocol: TCP
+            - name: rpc
+              containerPort: {{ .Values.hdfs.namenode.service.rpcPort }}
+              protocol: TCP
+          env:
+            - name: CLUSTER_NAME
+              value: {{ .Values.hdfs.namenode.env.clusterName | quote }}
+            - name: CORE_CONF_fs_defaultFS
+              value: "hdfs://{{ include "hdfs.name" . }}-namenode:{{ .Values.hdfs.namenode.service.rpcPort }}"
+            - name: CORE_CONF_hadoop_http_staticuser_user
+              value: "root"
+            - name: HDFS_CONF_dfs_webhdfs_enabled
+              value: {{ .Values.hdfs.namenode.env.webhdfsEnabled | quote }}
+            - name: HDFS_CONF_dfs_permissions_enabled
+              value: {{ .Values.hdfs.namenode.env.permissionsEnabled | quote }}
+            - name: HDFS_CONF_dfs_replication
+              value: {{ .Values.hdfs.namenode.env.dfsReplication | quote }}
+            - name: HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check
+              value: "false"
+          volumeMounts:
+            - name: data
+              mountPath: /hadoop/dfs/name
+          resources:
           {{ toYaml .Values.hdfs.namenode.resources | nindent 10 }}
-        livenessProbe:
-          httpGet:
-            path: /
-            port: web
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /
-            port: web
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
       {{- if not .Values.hdfs.namenode.persistence.enabled }}
       volumes:
-      - name: data
-        emptyDir: {}
+        - name: data
+          emptyDir: { }
       {{- end }}
 
   {{- if .Values.hdfs.namenode.persistence.enabled }}
   volumeClaimTemplates:
-  - metadata:
-      name: data
-      labels:
+    - metadata:
+        name: data
+        labels:
         {{ include "hdfs.labels" . | nindent 8 }}
-        component: namenode
-    spec:
-      accessModes:
-        - {{ .Values.hdfs.namenode.persistence.accessMode }}
+          component: namenode
+      spec:
+        accessModes:
+          - {{ .Values.hdfs.namenode.persistence.accessMode }}
       {{- if .Values.hdfs.namenode.persistence.storageClass }}
-      storageClassName: {{ .Values.hdfs.namenode.persistence.storageClass }}
+        storageClassName: {{ .Values.hdfs.namenode.persistence.storageClass }}
       {{- end }}
-      resources:
-        requests:
-          storage: {{ .Values.hdfs.namenode.persistence.size }}
+        resources:
+          requests:
+            storage: {{ .Values.hdfs.namenode.persistence.size }}
   {{- end }}

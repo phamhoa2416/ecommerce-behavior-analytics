@@ -81,7 +81,7 @@ spec:
       {{- if not .Values.clickhouse.persistence.enabled }}
       volumes:
         - name: data
-          emptyDir: {}
+          emptyDir: { }
       {{- end }}
 
   {{- if .Values.clickhouse.persistence.enabled }}

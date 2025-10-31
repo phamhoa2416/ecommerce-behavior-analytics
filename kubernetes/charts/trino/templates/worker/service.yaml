@@ -9,10 +9,10 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-  - port: 8080
-    targetPort: http
-    protocol: TCP
-    name: http
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
   selector:
     {{ include "trino.selectorLabels" . | nindent 4 }}
     component: worker

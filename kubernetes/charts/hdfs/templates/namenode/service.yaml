@@ -8,14 +8,14 @@ metadata:
 spec:
   type: {{ .Values.hdfs.namenode.service.type }}
   ports:
-  - port: {{ .Values.hdfs.namenode.service.webPort }}
-    targetPort: web
-    protocol: TCP
-    name: web
-  - port: {{ .Values.hdfs.namenode.service.rpcPort }}
-    targetPort: rpc
-    protocol: TCP
-    name: rpc
+    - port: {{ .Values.hdfs.namenode.service.webPort }}
+      targetPort: web
+      protocol: TCP
+      name: web
+    - port: {{ .Values.hdfs.namenode.service.rpcPort }}
+      targetPort: rpc
+      protocol: TCP
+      name: rpc
   selector:
     {{ include "hdfs.selectorLabels" . | nindent 4 }}
     component: namenode
@@ -31,14 +31,14 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-  - port: {{ .Values.hdfs.namenode.service.webPort }}
-    targetPort: web
-    protocol: TCP
-    name: web
-  - port: {{ .Values.hdfs.namenode.service.rpcPort }}
-    targetPort: rpc
-    protocol: TCP
-    name: rpc
+    - port: {{ .Values.hdfs.namenode.service.webPort }}
+      targetPort: web
+      protocol: TCP
+      name: web
+    - port: {{ .Values.hdfs.namenode.service.rpcPort }}
+      targetPort: rpc
+      protocol: TCP
+      name: rpc
   selector:
     {{ include "hdfs.selectorLabels" . | nindent 4 }}
     component: namenode
