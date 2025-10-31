@@ -1,6 +1,0 @@
-apiVersion: v2
-name: redis
-version: 0.1.0
-description: A Helm chart for Redis, for subchart use with Superset
-appVersion: "7.2.0"
-type: application
