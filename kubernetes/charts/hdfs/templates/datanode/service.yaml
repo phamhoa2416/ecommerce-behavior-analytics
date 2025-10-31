@@ -17,7 +17,7 @@ spec:
       protocol: TCP
       name: data
     - port: 9867
-      targetPort: {{ .Values.hdfs.datanode.service.ipcPort }}
+      targetPort: ipc
       protocol: TCP
       name: ipc
   selector:

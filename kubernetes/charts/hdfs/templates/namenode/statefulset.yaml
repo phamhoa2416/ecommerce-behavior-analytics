@@ -48,7 +48,7 @@ spec:
             - name: data
               mountPath: /hadoop/dfs/name
           resources:
-          {{ toYaml .Values.hdfs.namenode.resources | nindent 10 }}
+          {{ toYaml .Values.hdfs.namenode.resources | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /
@@ -74,7 +74,7 @@ spec:
     - metadata:
         name: data
         labels:
-        {{ include "hdfs.labels" . | nindent 8 }}
+        {{ include "hdfs.labels" . | nindent 10 }}
           component: namenode
       spec:
         accessModes:
