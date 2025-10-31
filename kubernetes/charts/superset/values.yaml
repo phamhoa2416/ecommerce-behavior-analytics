@@ -3,7 +3,7 @@ superset:
 
   image:
     repository: apache/superset
-    tag: "2.1.0"
+    tag: "3.0.2"
     pullPolicy: IfNotPresent
 
   nameOverride: ""
@@ -48,10 +48,10 @@ superset:
       password: superset
 
     redis:
-      enabled: false
-      host: ""
+      enabled: true
+      host: "redis"
       port: 6379
-      password: ""
+      password: redispassword
 
     clickhouse:
       enabled: true

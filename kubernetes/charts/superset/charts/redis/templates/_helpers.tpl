@@ -1,23 +1,23 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{ define "superset.name" -}}
-{{ default .Chart.Name .Values.superset.nameOverride | trunc 63 | trimSuffix "-" }}
+{{ define "redis.name" -}}
+{{ default .Chart.Name .Values.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{ define "superset.chart" -}}
+{{ define "redis.chart" -}}
 {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{ define "superset.labels" -}}
-helm.sh/chart: {{ include "superset.chart" . }}
-{{ include "superset.selectorLabels" . }}
+{{ define "redis.labels" -}}
+helm.sh/chart: {{ include "redis.chart" . }}
+{{ include "redis.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -27,7 +27,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{ define "superset.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "superset.name" . }}
+{{ define "redis.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "redis.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
