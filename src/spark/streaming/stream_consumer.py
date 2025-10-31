@@ -1,4 +1,4 @@
-from pyspark.sql.functions import col, from_json
+from pyspark.sql.functions import col, from_json, regexp_replace, to_utc_timestamp, to_timestamp
 import sys
 import os
 
@@ -6,7 +6,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.spark_utils import create_spark_session, get_ecommerce_schema, get_kafka_config
 
 def write_to_clickhouse(batch_df, batch_id):
-    clickhouse_url = "jdbc:clickhouse://localhost:8123/default"
+    clickhouse_url = "jdbc:clickhouse://localhost:8123/ecommerce"
     clickhouse_properties = {
         "user": "admin",
         "password": "password",
@@ -15,7 +15,7 @@ def write_to_clickhouse(batch_df, batch_id):
 
     batch_df.write \
     .mode("append") \
-    .jdbc(url=clickhouse_url, table="ecommerce_data", properties=clickhouse_properties)
+    .jdbc(url=clickhouse_url, table="ecommerce_events", properties=clickhouse_properties)
 
 
 def main():
@@ -39,11 +39,22 @@ def main():
         from_json(col("value").cast("string"), schema).alias("data"),
         col("timestamp").alias("kafka_timestamp")
     ).select(
-        "data.*",
-        "kafka_timestamp"
+        "data.*"
     )
 
-    query = df_parsed.writeStream \
+    df_fixed = (
+        df_parsed
+        .withColumn(
+            "event_time",
+            regexp_replace(col("event_time"), " UTC", "")
+        )
+        .withColumn(
+            "event_time",
+            to_utc_timestamp(to_timestamp(col("event_time"), "yyyy-MM-dd HH:mm:ss"), "UTC")
+        )
+    )
+
+    query = df_fixed.writeStream \
         .outputMode("append") \
         .foreachBatch(write_to_clickhouse) \
         .option("checkpointLocation", "/tmp/checkpoint_clickhouse") \
