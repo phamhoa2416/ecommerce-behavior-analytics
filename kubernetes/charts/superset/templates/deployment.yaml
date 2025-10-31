@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "superset.fullname" . }}
+  labels:
+    {{ include "superset.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.superset.replicas }}
+  selector:
+    matchLabels:
+      {{ include "superset.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{ include "superset.selectorLabels" . | nindent 8 }}
+    spec:
+      initContainers:
+      - name: init-superset
+        image: "{{ .Values.superset.image.repository }}:{{ .Values.superset.image.tag }}"
+        imagePullPolicy: {{ .Values.superset.image.pullPolicy }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Installing required packages..."
+          pip install psycopg2-binary
+
+          {{- if .Values.superset.env.database.host }}
+          echo "Waiting for database to be ready..."
+          until pg_isready -h {{ .Values.superset.env.database.host }} -p {{ .Values.superset.env.database.port }}; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          {{- end }}
+
+          echo "Initializing Superset database..."
+          superset db upgrade
+
+          echo "Creating admin user..."
+          superset fab create-admin \
+            --username {{ .Values.superset.env.auth.username }} \
+            --firstname Admin \
+            --lastname User \
+            --email admin@superset.com \
+            --password {{ .Values.superset.env.auth.password }} || true
+
+          echo "Initializing Superset..."
+          superset init
+
+          {{- if .Values.superset.env.clickhouse.enabled }}
+          echo "Installing ClickHouse driver..."
+          pip install clickhouse-connect
+          {{- end }}
+
+          echo "Initialization complete!"
+        env:
+        - name: SUPERSET_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "superset.fullname" . }}-secret
+              key: secret-key
+        {{- if .Values.superset.env.database.host }}
+        - name: DATABASE_DB
+          value: {{ .Values.superset.env.database.name }}
+        - name: DATABASE_HOST
+          value: {{ .Values.superset.env.database.host }}
+        - name: DATABASE_PORT
+          value: {{ .Values.superset.env.database.port | quote }}
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "superset.fullname" . }}-secret
+              key: db-username
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "superset.fullname" . }}-secret
+              key: db-password
+        - name: SUPERSET_DATABASE_URI
+          value: "postgresql+psycopg2://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_DB)"
+        {{- end }}
+        volumeMounts:
+        - name: superset-config
+          mountPath: /app/pythonpath
+      containers:
+      - name: superset
+        image: "{{ .Values.superset.image.repository }}:{{ .Values.superset.image.tag }}"
+        imagePullPolicy: {{ .Values.superset.image.pullPolicy }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          {{- if .Values.superset.env.clickhouse.enabled }}
+          echo "Installing ClickHouse driver..."
+          pip install clickhouse-connect
+          {{- end }}
+          echo "Starting Superset..."
+          gunicorn \
+            --bind 0.0.0.0:8088 \
+            --workers 4 \
+            --timeout 120 \
+            --limit-request-line 0 \
+            --limit-request-field_size 0 \
+            "superset.app:create_app()"
+        ports:
+        - name: http
+          containerPort: 8088
+          protocol: TCP
+        env:
+        - name: SUPERSET_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "superset.fullname" . }}-secret
+              key: secret-key
+        - name: PYTHONPATH
+          value: /app/pythonpath
+        {{- if .Values.superset.env.database.host }}
+        - name: DATABASE_DB
+          value: {{ .Values.superset.env.database.name }}
+        - name: DATABASE_HOST
+          value: {{ .Values.superset.env.database.host }}
+        - name: DATABASE_PORT
+          value: {{ .Values.superset.env.database.port | quote }}
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "superset.fullname" . }}-secret
+              key: db-username
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "superset.fullname" . }}-secret
+              key: db-password
+        - name: SUPERSET_DATABASE_URI
+          value: "postgresql+psycopg2://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_DB)"
+        {{- end }}
+        {{- if .Values.superset.env.redis.enabled }}
+        - name: REDIS_HOST
+          value: {{ .Values.superset.env.redis.host }}
+        - name: REDIS_PORT
+          value: {{ .Values.superset.env.redis.port | quote }}
+        {{- end }}
+        volumeMounts:
+        - name: superset-config
+          mountPath: /app/pythonpath
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          {{ toYaml .Values.superset.resources | nindent 10 }}
+      volumes:
+      - name: superset-config
+        configMap:
+          name: {{ include "superset.fullname" . }}-config

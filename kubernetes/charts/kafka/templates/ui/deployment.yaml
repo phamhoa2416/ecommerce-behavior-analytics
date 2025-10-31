@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kafka.name" . }}-ui
+  labels:
+    {{ include "kafka.labels" . | nindent 4 }}
+    component: kafka-ui
+spec:
+  replicas: {{ .Values.kafkaUi.replicas}}
+  selector:
+    matchLabels:
+      {{ include "kafka.selectorLabels" . | nindent 6 }}
+      component: kafka-ui
+  template:
+    metadata:
+      labels:
+        {{ include "kafka.selectorLabels" . | nindent 8 }}
+        component: kafka-ui
+    spec:
+      containers:
+      - name: kafka-ui
+        image: "{{ .Values.kafkaUi.image.repository }}:{{ .Values.kafkaUi.image.tag }}"
+        imagePullPolicy: {{ .Values.kafkaUi.image.imagePullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.kafkaUi.service.port }}
+          protocol: TCP
+        env:
+        - name: KAFKA_CLUSTERS_0_NAME
+          value: "local"
+        - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+          value: "{{ include "kafka.service.name" . }}:29092"
+        - name: KAFKA_UI_SERVER_PORT
+          value: {{ .Values.kafkaUi.service.port | quote }}
+        resources:
+          {{ toYaml .Values.kafkaUi.resources | nindent 12 }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5

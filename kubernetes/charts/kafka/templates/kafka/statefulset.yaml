@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "kafka.name" . }}
+  labels:
+    {{ include "kafka.labels" . | nindent 4 }}
+    component: kafka
+spec:
+  serviceName: {{ include "kafka.service.name" . }}-headless
+  replicas: {{ .Values.kafka.replicas }}
+  selector:
+    matchLabels:
+      {{ include "kafka.selectorLabels" . | nindent 6 }}
+      component: kafka
+  template:
+    metadata:
+      labels:
+        {{ include "kafka.selectorLabels" . | nindent 8 }}
+        component: kafka
+    spec:
+      containers:
+      - name: kafka
+        image: "{{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}"
+        imagePullPolicy: {{ .Values.kafka.image.imagePullPolicy }}
+        ports:
+        - name: broker
+          containerPort: 29092
+          protocol: TCP
+        - name: controller
+          containerPort: 29093
+          protocol: TCP
+        - name: jmx
+          containerPort: {{ .Values.kafka.service.ports.jmx }}
+          protocol: TCP
+        - name: external
+          containerPort: {{ .Values.kafka.service.ports.broker }}
+          protocol: TCP
+        env:
+        - name: KAFKA_NODE_ID
+          value: "1"
+        - name: KAFKA_PROCESS_ROLES
+          value: "broker,controller"
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: "1@kafka-0.{{ include "kafka.service.name" . }}-headless:29093"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://:29092,CONTROLLER://:29093,PLAINTEXT_HOST://:{{ .Values.kafka.service.ports.broker }}"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://{{ include "kafka.service.name" . }}-headless:29092,PLAINTEXT_HOST://localhost:{{ .Values.kafka.service.nodePorts.broker }}"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: "CONTROLLER"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "PLAINTEXT"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: {{ .Values.kafka.env.offsetsReplicationFactor | quote }}
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: {{ .Values.kafka.env.transactionReplicationFactor | quote }}
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "1"
+        - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+          value: "0"
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: {{ .Values.kafka.env.autoCreateTopics | quote }}
+        - name: KAFKA_JMX_PORT
+          value: {{ .Values.kafka.service.ports.jmx | quote }}
+        - name: KAFKA_JMX_HOSTNAME
+          value: "localhost"
+        - name: CLUSTER_ID
+          value: {{ .Values.kafka.env.clusterId | quote }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kafka/data
+        resources:
+          {{ toYaml .Values.kafka.resources | nindent 12 }}
+        livenessProbe:
+          tcpSocket:
+            port: broker
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: broker
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      {{- if not .Values.kafka.persistence.enabled }}
+      volumes:
+      - name: data
+        emptyDir: {}
+      {{- end }}
+  {{- if .Values.kafka.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      {{- if .Values.kafka.persistence.storageClass }}
+      storageClassName: {{ .Values.kafka.persistence.storageClass }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.kafka.persistence.size }}
+  {{- end }}

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: superset
+description: A Helm chart for Apache Superset with ClickHouse integration
+type: application
+version: 0.1.0
+appVersion: "2.1.0"
+keywords:
+  - superset
+  - visualization
+  - analytics
+  - bi
+  - clickhouse

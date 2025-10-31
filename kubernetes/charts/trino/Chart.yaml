@@ -1,0 +1,10 @@
+apiVersion: v2
+name: trino
+description: A Helm chart for Trino to query HDFS data
+type: application
+version: 0.1.0
+appVersion: "435"
+keywords:
+  - trino
+  - query engine
+  - hdfs

@@ -1,0 +1,9 @@
+global:
+  appName: "warehouse"
+  namespaces:
+    network: "warehouse-network"
+    system: "warehouse-system"
+    data: "warehouse-data"
+    monitoring: "warehouse-monitoring"
+  networkPolicy:
+    enabled: true

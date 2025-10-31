@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hdfs.name" . }}-datanode
+  labels:
+    {{ include "hdfs.labels" . | nindent 4 }}
+    component: datanode
+spec:
+  type: {{ .Values.hdfs.datanode.service.type }}
+  ports:
+  - port: {{ .Values.hdfs.datanode.service.webPort }}
+    targetPort: web
+    protocol: TCP
+    name: web
+  - port: {{ .Values.hdfs.datanode.service.dataPort }}
+    targetPort: data
+    protocol: TCP
+    name: data
+  - port: 9867
+    targetPort: {{ .Values.hdfs.datanode.service.ipcPort }}
+    protocol: TCP
+    name: ipc
+  selector:
+    {{ include "hdfs.selectorLabels" . | nindent 4 }}
+    component: datanode
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hdfs.name" . }}-datanode-headless
+  labels:
+    {{ include "hdfs.labels" . | nindent 4 }}
+    component: datanode
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - port: {{ .Values.hdfs.datanode.service.webPort }}
+    targetPort: web
+    protocol: TCP
+    name: web
+  selector:
+    {{ include "hdfs.selectorLabels" . | nindent 4 }}
+    component: datanode

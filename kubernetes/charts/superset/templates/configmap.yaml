@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "superset.fullname" . }}-config
+  labels:
+    {{ include "superset.labels" . | nindent 4 }}
+data:
+  superset_config.py: |
+    import os
+
+    # Flask App Builder configuration
+    APP_NAME = "Apache Superset"
+
+    # Flask secret key
+    SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'changeme')
+
+    # SQLAlchemy database URI
+    {{- if .Values.superset.env.database.host }}
+    SQLALCHEMY_DATABASE_URI = os.environ.get('SUPERSET_DATABASE_URI')
+    {{- else }}
+    SQLALCHEMY_DATABASE_URI = 'sqlite:////app/superset_home/superset.db'
+    {{- end }}
+
+    # Flask-WTF flag for CSRF
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = None
+
+    # Set this API key to enable Mapbox visualizations
+    MAPBOX_API_KEY = os.environ.get('MAPBOX_API_KEY', '')
+
+    {{- if .Values.superset.env.redis.enabled }}
+    # Redis configuration
+    REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+    REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
+
+    # Cache configuration
+    CACHE_CONFIG = {
+        'CACHE_TYPE': 'RedisCache',
+        'CACHE_DEFAULT_TIMEOUT': 300,
+        'CACHE_KEY_PREFIX': 'superset_',
+        'CACHE_REDIS_HOST': REDIS_HOST,
+        'CACHE_REDIS_PORT': REDIS_PORT,
+    }
+
+    # Celery configuration
+    class CeleryConfig:
+        broker_url = f'redis://{REDIS_HOST}:{REDIS_PORT}/0'
+        result_backend = f'redis://{REDIS_HOST}:{REDIS_PORT}/1'
+
+    CELERY_CONFIG = CeleryConfig
+    {{- else }}
+    # Simple cache (no Redis)
+    CACHE_CONFIG = {
+        'CACHE_TYPE': 'SimpleCache',
+        'CACHE_DEFAULT_TIMEOUT': 300,
+    }
+    {{- end }}
+
+    # Superset webserver configuration
+    SUPERSET_WEBSERVER_PORT = 8088
+    SUPERSET_WEBSERVER_TIMEOUT = 120
+
+    # Enable feature flags
+    FEATURE_FLAGS = {
+        "ENABLE_TEMPLATE_PROCESSING": True,
+        "DASHBOARD_NATIVE_FILTERS": True,
+        "DASHBOARD_CROSS_FILTERS": True,
+        "DASHBOARD_NATIVE_FILTERS_SET": True,
+    }
+
+    # Row limit for queries
+    ROW_LIMIT = 50000
+
+    # SQL Lab configuration
+    SUPERSET_WEBSERVER_TIMEOUT = 300
+    SQLLAB_TIMEOUT = 300
+
+    # Enable CORS
+    ENABLE_CORS = True
+    CORS_OPTIONS = {
+        'supports_credentials': True,
+        'allow_headers': ['*'],
+        'resources': ['*'],
+        'origins': ['*']
+    }
+
+    {{- if .Values.superset.env.clickhouse.enabled }}
+    # ClickHouse database configuration
+    CLICKHOUSE_HOST = "{{ .Values.superset.env.clickhouse.host }}"
+    CLICKHOUSE_PORT = "{{ .Values.superset.env.clickhouse.port }}"
+    CLICKHOUSE_DATABASE = "{{ .Values.superset.env.clickhouse.database }}"
+    CLICKHOUSE_USER = "{{ .Values.superset.env.clickhouse.username }}"
+    CLICKHOUSE_PASSWORD = "{{ .Values.superset.env.clickhouse.password }}"
+    CLICKHOUSE_PROTOCOL = "{{ .Values.superset.env.clickhouse.protocol }}"
+
+    CLICKHOUSE_URI = f"clickhousedb://{CLICKHOUSE_USER}:{CLICKHOUSE_PASSWORD}@{CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}/{CLICKHOUSE_DATABASE}"
+    {{- end }}

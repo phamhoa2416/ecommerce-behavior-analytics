@@ -1,0 +1,195 @@
+---
+# ==============================
+# PostgreSQL for Hive Metastore
+# ==============================
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-metastore
+  labels:
+    app: postgres-metastore
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: postgres-metastore
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-metastore
+  labels:
+    app: postgres-metastore
+spec:
+  serviceName: postgres-metastore
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-metastore
+  template:
+    metadata:
+      labels:
+        app: postgres-metastore
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: metastore
+            - name: POSTGRES_USER
+              value: hive
+            - name: POSTGRES_PASSWORD
+              value: hivepassword
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# ==============================
+# Hive Metastore
+# ==============================
+apiVersion: v1
+kind: Service
+metadata:
+  name: hive-metastore
+  labels:
+    app: hive-metastore
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9083
+      targetPort: 9083
+      protocol: TCP
+      name: thrift
+  selector:
+    app: hive-metastore
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-metastore
+  labels:
+    app: hive-metastore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hive-metastore
+  template:
+    metadata:
+      labels:
+        app: hive-metastore
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Waiting for PostgreSQL..."
+              until nc -z postgres-metastore 5432; do
+                echo "PostgreSQL not ready, waiting..."
+                sleep 5
+              done
+              echo "PostgreSQL is ready!"
+        - name: wait-for-hdfs
+          image: busybox:1.35
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Waiting for HDFS NameNode..."
+              until nc -z hadoop-namenode 9000; do
+                echo "HDFS NameNode not ready, waiting..."
+                sleep 5
+              done
+              echo "HDFS NameNode is ready!"
+      containers:
+        - name: metastore
+          image: apache/hive:4.0.1
+          ports:
+            - containerPort: 9083
+              protocol: TCP
+          env:
+            - name: SERVICE_NAME
+              value: metastore
+            - name: HIVE_METASTORE_DB_TYPE
+              value: postgres
+            - name: HIVE_METASTORE_DB_HOST
+              value: postgres-metastore
+            - name: HIVE_METASTORE_DB_PORT
+              value: "5432"
+            - name: HIVE_METASTORE_DB_NAME
+              value: metastore
+            - name: HIVE_METASTORE_DB_USER
+              value: hive
+            - name: HIVE_METASTORE_DB_PASS
+              value: hivepassword
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e  # Exit on error
+              echo "Generating hive-site.xml ..."
+              cat > /opt/hive/conf/hive-site.xml <<EOF
+              <?xml version="1.0"?>
+              <configuration>
+                <property>
+                  <name>javax.jdo.option.ConnectionURL</name>
+                  <value>jdbc:postgresql://postgres-metastore:5432/metastore</value>
+                </property>
+                <property>
+                  <name>javax.jdo.option.ConnectionDriverName</name>
+                  <value>org.postgresql.Driver</value>
+                </property>
+                <property>
+                  <name>javax.jdo.option.ConnectionUserName</name>
+                  <value>hive</value>
+                </property>
+                <property>
+                  <name>javax.jdo.option.ConnectionPassword</name>
+                  <value>hivepassword</value>
+                </property>
+                <property>
+                  <name>datanucleus.autoCreateSchema</name>
+                  <value>false</value>
+                </property>
+                <property>
+                  <name>hive.metastore.schema.verification</name>
+                  <value>false</value>
+                </property>
+                <property>
+                  <name>hive.metastore.warehouse.dir</name>
+                  <value>hdfs://hadoop-namenode:9000/user/hive/warehouse</value>
+                </property>
+              </configuration>
+              EOF
+
+              echo "Initializing schema..."
+              /opt/hive/bin/schematool -dbType postgres -initSchema -verbose
+
+              echo "Starting Hive Metastore..."
+              /opt/hive/bin/hive --service metastore
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: hive-conf
+          emptyDir: {}
