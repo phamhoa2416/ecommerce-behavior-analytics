@@ -225,7 +225,7 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
           resources:
-          {{ toYaml .Values.superset.resources | nindent 10 }}
+          {{ toYaml .Values.superset.resources | nindent 12 }}
       volumes:
         - name: superset-config
           configMap:
