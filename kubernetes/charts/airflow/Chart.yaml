@@ -1,0 +1,16 @@
+apiVersion: v2
+name: airflow
+description: A Helm charts for Apache Airflow for batch processing in Lambda architecture
+type: application
+version: 0.1.0
+appVersion: "2.8.0"
+keywords:
+  - airflow
+  - workflow
+  - scheduler
+  - batch-processing
+dependencies:
+  - name: postgres
+    version: 0.1.0
+    repository: "file://./postgres"
+

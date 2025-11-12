@@ -1,0 +1,162 @@
+airflow:
+  name: airflow
+
+  executor: LocalExecutor  # Options: LocalExecutor, CeleryExecutor, KubernetesExecutor
+
+  image:
+    repository: apache/airflow
+    tag: "2.8.0"
+    pullPolicy: IfNotPresent
+
+  webserver:
+    replicas: 1
+    port: 8080
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+  scheduler:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: airflow.local
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+    tls: []
+
+  # Airflow configuration
+  config:
+    core:
+      parallelism: 32
+      dagConcurrency: 16
+      maxActiveRunsPerDag: 16
+      loadExamples: false
+      executor: LocalExecutor
+      sqlAlchemyConn: "postgresql+psycopg2://admin:password@postgres:5432/airflow"
+      fernetKey: "uYbZN0Qc7EseNeKZlEYfEM0c2gy7gFL9OUQ_J0rsCSc="
+      defaultTimezone: "UTC"
+    
+    webserver:
+      exposeConfig: false
+      defaultUiTimezone: "UTC"
+      enableProxyFix: true
+    
+    logging:
+      loggingLevel: INFO
+      fabLoggingLevel: WARN
+    
+    api:
+      authBackend: airflow.api.auth.backend.basic_auth
+
+  # Connections configuration
+  connections:
+    kafka:
+      connType: kafka
+      host: kafka-0.kafka-headless
+      port: 9092
+      extra: '{"bootstrap_servers": "kafka-0.kafka-headless:9092"}'
+    
+    hdfs:
+      connType: hdfs
+      host: hadoop-namenode
+      port: 9000
+      extra: '{"namenode": "hdfs://hadoop-namenode:9000"}'
+    
+    clickhouse:
+      connType: http
+      host: clickhouse
+      port: 8123
+      login: admin
+      password: password
+      schema: ecommerce
+
+  # Variables
+  variables:
+    kafka_bootstrap_servers: "kafka-0.kafka-headless:9092"
+    kafka_topic: "ecommerce_data"
+    hdfs_namenode: "hadoop-namenode:9000"
+    hdfs_output_path: "hdfs://hadoop-namenode:9000/data/ecommerce/batch"
+    clickhouse_host: "clickhouse"
+    clickhouse_port: "8123"
+    clickhouse_database: "ecommerce"
+    spark_master: "local[*]"
+    spark_jars_packages: "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,com.clickhouse:clickhouse-jdbc:0.6.0"
+
+  # DAGs configuration
+  dags:
+    gitSync:
+      enabled: false
+      repo: ""
+      branch: ""
+      subPath: ""
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: ""
+
+  # Extra environment variables
+  env:
+    - name: AIRFLOW__CORE__EXECUTOR
+      value: LocalExecutor
+    - name: AIRFLOW__CORE__FERNET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: airflow-secret
+          key: fernet-key
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+      valueFrom:
+        secretKeyRef:
+          name: airflow-secret
+          key: database-url
+
+postgres:
+  replicaCount: 1
+  
+  image:
+    repository: postgres
+    tag: "15"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 5432
+  
+  postgres:
+    db: airflow
+    user: admin
+    password: password
+  
+  persistence:
+    enabled: true
+    accessMode: ReadWriteOnce
+    size: 3Gi
+    storageClass: ""
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
