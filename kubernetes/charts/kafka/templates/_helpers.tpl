@@ -36,7 +36,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Kafka service name
 */}}
 {{ define "kafka.service.name" -}}
-{{ include "kafka.name" . }}
+{{ include "kafka.name" . }}-service
 {{- end }}
 
 {{/*
