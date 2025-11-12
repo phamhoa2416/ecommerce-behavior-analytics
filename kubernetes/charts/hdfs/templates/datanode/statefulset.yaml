@@ -36,67 +36,67 @@ spec:
               done
               echo "NameNode is ready!"
       containers:
-      - name: datanode
-        image: "{{ .Values.hdfs.datanode.image.repository }}:{{ .Values.hdfs.datanode.image.tag }}"
-        imagePullPolicy: {{ .Values.hdfs.datanode.image.imagePullPolicy }}
-        ports:
-          - name: web
-            containerPort: {{ .Values.hdfs.datanode.service.webPort }}
-            protocol: TCP
-          - name: data
-            containerPort: {{ .Values.hdfs.datanode.service.dataPort }}
-            protocol: TCP
-          - name: ipc
-            containerPort: {{ .Values.hdfs.datanode.service.ipcPort }}
-            protocol: TCP
-        env:
-        - name: SERVICE_PRECONDITION
-          value: "{{ include "hdfs.name" . }}-namenode:{{ .Values.hdfs.namenode.service.webPort }}"
-        - name: CORE_CONF_fs_defaultFS
-          value: "hdfs://{{ include "hdfs.name" . }}-namenode:{{ .Values.hdfs.namenode.service.rpcPort }}"
-        - name: HDFS_CONF_dfs_replication
-          value: {{ .Values.hdfs.datanode.env.dfsReplication | quote }}
-        - name: HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check
-          value: "false"
-        volumeMounts:
-        - name: data
-          mountPath: /hadoop/dfs/data
-        resources:
+        - name: datanode
+          image: "{{ .Values.hdfs.datanode.image.repository }}:{{ .Values.hdfs.datanode.image.tag }}"
+          imagePullPolicy: {{ .Values.hdfs.datanode.image.imagePullPolicy }}
+          ports:
+            - name: web
+              containerPort: {{ .Values.hdfs.datanode.service.webPort }}
+              protocol: TCP
+            - name: data
+              containerPort: {{ .Values.hdfs.datanode.service.dataPort }}
+              protocol: TCP
+            - name: ipc
+              containerPort: {{ .Values.hdfs.datanode.service.ipcPort }}
+              protocol: TCP
+          env:
+            - name: SERVICE_PRECONDITION
+              value: "{{ include "hdfs.name" . }}-namenode:{{ .Values.hdfs.namenode.service.webPort }}"
+            - name: CORE_CONF_fs_defaultFS
+              value: "hdfs://{{ include "hdfs.name" . }}-namenode:{{ .Values.hdfs.namenode.service.rpcPort }}"
+            - name: HDFS_CONF_dfs_replication
+              value: {{ .Values.hdfs.datanode.env.dfsReplication | quote }}
+            - name: HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check
+              value: "false"
+          volumeMounts:
+            - name: data
+              mountPath: /hadoop/dfs/data
+          resources:
           {{ toYaml .Values.hdfs.datanode.resources | nindent 12 }}
-        livenessProbe:
-          httpGet:
-            path: /
-            port: web
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /
-            port: web
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
       {{- if not .Values.hdfs.datanode.persistence.enabled }}
       volumes:
-      - name: data
-        emptyDir: {}
+        - name: data
+          emptyDir: { }
       {{- end }}
 
   {{- if .Values.hdfs.datanode.persistence.enabled }}
   volumeClaimTemplates:
-  - metadata:
-      name: data
-      labels:
-        {{ include "hdfs.labels" . | nindent 8 }}
-        component: datanode
-    spec:
-      accessModes:
-      - {{ .Values.hdfs.datanode.persistence.accessMode }}
+    - metadata:
+        name: data
+        labels:
+        {{ include "hdfs.labels" . | nindent 10 }}
+          component: datanode
+      spec:
+        accessModes:
+          - {{ .Values.hdfs.datanode.persistence.accessMode }}
       {{- if .Values.hdfs.datanode.persistence.storageClass }}
-      storageClassName: {{ .Values.hdfs.datanode.persistence.storageClass }}
+        storageClassName: {{ .Values.hdfs.datanode.persistence.storageClass }}
       {{- end }}
-      resources:
-        requests:
-          storage: {{ .Values.hdfs.datanode.persistence.size }}
+        resources:
+          requests:
+            storage: {{ .Values.hdfs.datanode.persistence.size }}
   {{- end }}

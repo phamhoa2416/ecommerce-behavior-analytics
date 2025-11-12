@@ -55,7 +55,7 @@ spec:
     - metadata:
         name: postgres-data
       spec:
-        accessModes: ["ReadWriteOnce"]
+        accessModes: [ "ReadWriteOnce" ]
         resources:
           requests:
             storage: 5Gi
@@ -98,7 +98,7 @@ spec:
       initContainers:
         - name: wait-for-postgres
           image: busybox:1.35
-          command: ['sh', '-c']
+          command: [ 'sh', '-c' ]
           args:
             - |
               echo "Waiting for PostgreSQL..."
@@ -109,7 +109,7 @@ spec:
               echo "PostgreSQL is ready!"
         - name: wait-for-hdfs
           image: busybox:1.35
-          command: ['sh', '-c']
+          command: [ 'sh', '-c' ]
           args:
             - |
               echo "Waiting for HDFS NameNode..."
@@ -139,7 +139,7 @@ spec:
               value: hive
             - name: HIVE_METASTORE_DB_PASS
               value: hivepassword
-          command: ["/bin/sh", "-c"]
+          command: [ "/bin/sh", "-c" ]
           args:
             - |
               set -e  # Exit on error
@@ -192,4 +192,4 @@ spec:
               memory: 1Gi
       volumes:
         - name: hive-conf
-          emptyDir: {}
+          emptyDir: { }

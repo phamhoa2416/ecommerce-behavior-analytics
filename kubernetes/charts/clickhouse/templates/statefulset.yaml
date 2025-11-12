@@ -76,12 +76,12 @@ spec:
             - name: data
               mountPath: /var/lib/clickhouse
           resources:
-            {{ toYaml .Values.clickhouse.resources | nindent 10 }}
+            {{ toYaml .Values.clickhouse.resources | nindent 12 }}
 
       {{- if not .Values.clickhouse.persistence.enabled }}
       volumes:
         - name: data
-          emptyDir: {}
+          emptyDir: { }
       {{- end }}
 
   {{- if .Values.clickhouse.persistence.enabled }}
@@ -89,7 +89,7 @@ spec:
     - metadata:
         name: data
         labels:
-          {{ include "clickhouse.labels" . | nindent 8 }}
+          {{ include "clickhouse.labels" . | nindent 10 }}
       spec:
         accessModes:
           - {{ .Values.clickhouse.persistence.accessMode }}

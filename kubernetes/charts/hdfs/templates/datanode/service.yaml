@@ -8,18 +8,18 @@ metadata:
 spec:
   type: {{ .Values.hdfs.datanode.service.type }}
   ports:
-  - port: {{ .Values.hdfs.datanode.service.webPort }}
-    targetPort: web
-    protocol: TCP
-    name: web
-  - port: {{ .Values.hdfs.datanode.service.dataPort }}
-    targetPort: data
-    protocol: TCP
-    name: data
-  - port: 9867
-    targetPort: {{ .Values.hdfs.datanode.service.ipcPort }}
-    protocol: TCP
-    name: ipc
+    - port: {{ .Values.hdfs.datanode.service.webPort }}
+      targetPort: web
+      protocol: TCP
+      name: web
+    - port: {{ .Values.hdfs.datanode.service.dataPort }}
+      targetPort: data
+      protocol: TCP
+      name: data
+    - port: 9867
+      targetPort: ipc
+      protocol: TCP
+      name: ipc
   selector:
     {{ include "hdfs.selectorLabels" . | nindent 4 }}
     component: datanode
@@ -35,10 +35,10 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-  - port: {{ .Values.hdfs.datanode.service.webPort }}
-    targetPort: web
-    protocol: TCP
-    name: web
+    - port: {{ .Values.hdfs.datanode.service.webPort }}
+      targetPort: web
+      protocol: TCP
+      name: web
   selector:
     {{ include "hdfs.selectorLabels" . | nindent 4 }}
     component: datanode

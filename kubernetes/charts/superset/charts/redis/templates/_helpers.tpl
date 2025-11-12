@@ -2,7 +2,7 @@
 Expand the name of the chart.
 */}}
 {{ define "redis.name" -}}
-{{ default .Chart.Name .Values.name | trunc 63 | trimSuffix "-" }}
+{{ default .Chart.Name .Values.redis.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
