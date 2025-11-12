@@ -6,17 +6,13 @@ kafka:
   image:
     repository: confluentinc/cp-kafka
     tag: "7.5.0"
-    imagePullPolicy: IfNotPresent
+    pullPolicy: IfNotPresent
 
   service:
-    type: NodePort
+    type: ClusterIP
     ports:
       broker: 9092
       controller: 9093
-      jmx: 9101
-    nodePorts:
-      broker: 30902
-      jmx: 31001
 
   persistence:
     enabled: true
@@ -45,9 +41,8 @@ kafkaUi:
     imagePullPolicy: Always
 
   service:
-    type: NodePort
+    type: ClusterIP
     port: 8080
-    nodePort: 30803
 
   resources:
     requests:
