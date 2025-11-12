@@ -10,9 +10,7 @@ spec:
   ports:
   - name: http
     port: {{ .Values.kafkaUi.service.port }}
-    targetPort: http
-    nodePort: {{ .Values.kafkaUi.service.nodePort }}
-    protocol: TCP
+    targetPort: {{ .Values.kafkaUi.service.port }}
   selector:
     {{ include "kafka.selectorLabels" . | nindent 4 }}
     component: kafka-ui
