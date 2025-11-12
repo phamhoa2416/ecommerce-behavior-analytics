@@ -1,31 +1,19 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kafka.service.name" . }}
+  name: {{ include "kafka.name" . }}-headless
   labels:
     {{ include "kafka.labels" . | nindent 4 }}
     component: kafka
 spec:
-  type: {{ .Values.kafka.service.type }}
+  clusterIP: None
   ports:
-  - name: broker-internal
-    port: 29092
-    targetPort: broker
-    protocol: TCP
-  - name: controller
-    port: 29093
-    targetPort: controller
-    protocol: TCP
-  - name: broker-external
-    port: {{ .Values.kafka.service.ports.broker }}
-    targetPort: external
-    nodePort: {{ .Values.kafka.service.nodePorts.broker }}
-    protocol: TCP
-  - name: jmx
-    port: {{ .Values.kafka.service.ports.jmx }}
-    targetPort: jmx
-    nodePort: {{ .Values.kafka.service.nodePorts.jmx }}
-    protocol: TCP
+    - name: broker
+      port: {{ .Values.kafka.service.ports.broker }}
+      targetPort: {{ .Values.kafka.service.ports.broker }}
+    - name: controller
+      port: {{ .Values.kafka.service.ports.controller }}
+      targetPort: {{ .Values.kafka.service.ports.controller }}
   selector:
     {{ include "kafka.selectorLabels" . | nindent 4 }}
     component: kafka
@@ -33,25 +21,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kafka.service.name" . }}-headless
+  name: {{ include "kafka.service.name" . }}
   labels:
     {{ include "kafka.labels" . | nindent 4 }}
     component: kafka
 spec:
-  clusterIP: None
+  type: {{ .Values.kafka.service.type }}
   ports:
-  - name: broker-internal
-    port: 29092
-    targetPort: broker
-    protocol: TCP
-  - name: controller
-    port: 29093
-    targetPort: controller
-    protocol: TCP
-  - name: jmx
-    port: {{ .Values.kafka.service.ports.jmx }}
-    targetPort: jmx
-    protocol: TCP
+    - name: broker
+      port: {{ .Values.kafka.service.ports.broker }}
+      targetPort: {{ .Values.kafka.service.ports.broker }}
   selector:
     {{ include "kafka.selectorLabels" . | nindent 4 }}
     component: kafka
