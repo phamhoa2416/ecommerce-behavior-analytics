@@ -13,3 +13,8 @@ lazy val root = (project in file("."))
       "com.clickhouse"   %  "clickhouse-jdbc" % "0.6.0"
     )
   )
+
+assembly / assemblyMergeStrategy := {
+  case PathList("META-INF", _ @ _*) => MergeStrategy.discard
+  case _ => MergeStrategy.first
+}
