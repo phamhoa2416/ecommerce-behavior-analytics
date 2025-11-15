@@ -1,5 +1,6 @@
-.venv
-.idea
+.idea/
+*.iml
+*.iws
 
 .env
 ### Scala ###
@@ -7,3 +8,24 @@
 *.log
 
 hs_err_pid*
+.env.*
+
+.metals/
+.bloop/
+.bsp/
+
+# sbt
+/target/
+/project/target/
+/project/project/
+logs/
+/dist/
+/out/
+
+# sbt assembly jar
+*.jar
+*.war
+*.zip
+
+!/dist/*.jar
+!/deploy/*.jar
