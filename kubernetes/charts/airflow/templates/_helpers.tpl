@@ -33,13 +33,25 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-PostgreSQL service name
+PostgreSQL service name — no "-postgres" auto suffix.
+Now if user sets .Values.postgres.serviceName → use it.
+If not → fallback to .Release.Name (or write your desired default)
 */}}
 {{ define "airflow.postgres.service" -}}
-{{- if .Values.postgres }}
-{{ printf "%s" "postgres" }}
+{{- if .Values.postgres.serviceName }}
+{{ .Values.postgres.serviceName }}
 {{- else }}
-{{ printf "%s-postgres" (include "airflow.name" .) }}
+{{ .Release.Name }}
 {{- end }}
 {{- end }}
 
+{{/*
+PostgreSQL database connection URL
+*/}}
+{{ define "airflow.database.url" -}}
+{{- if .Values.airflow.config.core.sqlAlchemyConn }}
+{{ .Values.airflow.config.core.sqlAlchemyConn }}
+{{- else }}
+postgresql+psycopg2://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@{{ include "airflow.postgres.service" . }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}
+{{- end }}
+{{- end }}
