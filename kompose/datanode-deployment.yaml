@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: C:\ProgramData\chocolatey\lib\kubernetes-kompose\tools\kompose.exe convert -f docker-compose.yaml -o ./kompose/
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: datanode
+  name: datanode
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: datanode
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: C:\ProgramData\chocolatey\lib\kubernetes-kompose\tools\kompose.exe convert -f docker-compose.yaml -o ./kompose/
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: datanode
+    spec:
+      containers:
+        - env:
+            - name: CORE_CONF_fs_defaultFS
+              value: hdfs://namenode:9000
+            - name: HDFS_CONF_dfs_replication
+              value: "1"
+            - name: SERVICE_PRECONDITION
+              value: namenode:9870
+          image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+          name: datanode
+          ports:
+            - containerPort: 9864
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /hadoop/dfs/data
+              name: hadoop-datanode
+      hostname: datanode
+      restartPolicy: Always
+      volumes:
+        - name: hadoop-datanode
+          persistentVolumeClaim:
+            claimName: hadoop-datanode

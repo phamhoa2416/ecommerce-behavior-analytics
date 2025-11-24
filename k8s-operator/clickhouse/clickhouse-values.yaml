@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-init-scripts
+  namespace: clickhouse
+data:
+  init-db.sh: |
+    #!/bin/bash
+    clickhouse-client --user=admin --password=password --query="CREATE DATABASE IF NOT EXISTS ecommerce"
+---
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: clickhouse
+  namespace: clickhouse
+spec:
+  configuration:
+    users:
+      admin/password: password
+      admin/networks/ip:
+        - "0.0.0.0/0"
+      admin/profile: default
+      admin/access_management: 1
+
+    clusters:
+      - name: clickhouse
+        layout:
+          shardsCount: 1
+          replicasCount: 2
+
+    settings:
+      default/default_access_management: 1
+
+    profiles:
+      default/max_memory_usage: 10000000000
+
+  defaults:
+    templates:
+      podTemplate: clickhouse-pod
+      dataVolumeClaimTemplate: data-volume
+      serviceTemplate: clickhouse-service
+
+  templates:
+    podTemplates:
+      - name: clickhouse-pod
+        spec:
+          containers:
+            - name: clickhouse
+              image: clickhouse/clickhouse-server:24.10.2
+              ports:
+                - name: http
+                  containerPort: 8123
+                - name: tcp
+                  containerPort: 9000
+                - name: interserver
+                  containerPort: 9009
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 512Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+            - name: clickhouse-exporter
+              image: f1yegor/clickhouse-exporter
+              args:
+                - "--scrape_uri=http://admin:password@localhost:8123/"
+                - "--telemetry.address=:9116"
+                - "--telemetry.endpoint=/metrics"
+                - "--log.level=info"
+              ports:
+                - containerPort: 9116
+                  name: metrics
+
+    volumeClaimTemplates:
+      - name: data-volume
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 6Gi
+          storageClassName: standard
+
+    serviceTemplates:
+      - name: clickhouse-service
+        generateName: "clickhouse-{chi}"
+        spec:
+          ports:
+            - name: http
+              port: 8123
+              targetPort: 8123
+            - name: tcp
+              port: 9000
+              targetPort: 9000
+          type: ClusterIP
