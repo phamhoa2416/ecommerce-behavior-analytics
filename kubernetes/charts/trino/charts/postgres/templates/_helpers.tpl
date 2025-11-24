@@ -1,7 +1,7 @@
-{{- define "postgres.name" -}}
+{{- define "postgres.hive-metastore.name" -}}
 {{ .Chart.Name }}
 {{- end }}
 
-{{ define "postgres.fullname" -}}
-{{ include "postgres.name" . }}
+{{ define "postgres.hive-metastore.fullname" -}}
+{{ include "postgres.hive-metastore.name" . }}
 {{- end }}

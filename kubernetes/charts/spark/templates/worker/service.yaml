@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "spark-cluster.fullname" . }}-worker-headless
+  labels:
+    {{ include "spark-cluster.labels" . | nindent 4 }}
+    component: worker
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ .Values.spark.worker.service.webPort }}
+      targetPort: web
+      protocol: TCP
+      name: web
+  selector:
+    {{ include "spark-cluster.selectorLabels" . | nindent 4 }}
+    component: worker
+
