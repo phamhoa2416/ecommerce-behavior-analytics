@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: clickhouse-init-scripts
+  namespace: clickhouse
 data:
   init-db.sh: |
     #!/bin/bash
@@ -11,6 +12,7 @@ apiVersion: clickhouse.altinity.com/v1
 kind: ClickHouseInstallation
 metadata:
   name: clickhouse
+  namespace: clickhouse
 spec:
   configuration:
     users:
@@ -24,7 +26,7 @@ spec:
       - name: clickhouse
         layout:
           shardsCount: 1
-          replicasCount: 1
+          replicasCount: 2
 
     settings:
       default/default_access_management: 1
@@ -59,6 +61,16 @@ spec:
                 limits:
                   cpu: 500m
                   memory: 1Gi
+            - name: clickhouse-exporter
+              image: f1yegor/clickhouse-exporter
+              args:
+                - "--scrape_uri=http://admin:password@localhost:8123/"
+                - "--telemetry.address=:9116"
+                - "--telemetry.endpoint=/metrics"
+                - "--log.level=info"
+              ports:
+                - containerPort: 9116
+                  name: metrics
 
     volumeClaimTemplates:
       - name: data-volume
@@ -67,7 +79,7 @@ spec:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 10Gi
+              storage: 6Gi
           storageClassName: standard
 
     serviceTemplates:
