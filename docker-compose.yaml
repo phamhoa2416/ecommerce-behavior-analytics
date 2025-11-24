@@ -38,48 +38,47 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
       KAFKA_UI_SERVER_PORT: 8080
     networks:
       - lakehouse-network
 
+#
+#  namenode:
+#    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+#    hostname: namenode
+#    container_name: namenode
+#    ports:
+#      - "9870:9870"
+#      - "9000:9000"
+#    environment:
+#      CLUSTER_NAME: hadoop-cluster
+#      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+#      CORE_CONF_hadoop_http_staticuser_user: root
+#      HDFS_CONF_dfs_webhdfs_enabled: 'true'
+#      HDFS_CONF_dfs_permissions_enabled: 'false'
+#      HDFS_CONF_dfs_replication: 1
+#    volumes:
+#      - hadoop_namenode:/hadoop/dfs/name
+#    networks:
+#      - lakehouse-network
 
-  namenode:
-    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    hostname: namenode
-    container_name: namenode
-    ports:
-      - "9870:9870"
-      - "9000:9000"
-    environment:
-      CLUSTER_NAME: hadoop-cluster
-      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
-      CORE_CONF_hadoop_http_staticuser_user: root
-      HDFS_CONF_dfs_webhdfs_enabled: 'true'
-      HDFS_CONF_dfs_permissions_enabled: 'false'
-      HDFS_CONF_dfs_replication: 1
-    volumes:
-      - hadoop_namenode:/hadoop/dfs/name
-    networks:
-      - lakehouse-network
-
-
-  datanode:
-    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    hostname: datanode
-    container_name: datanode
-    depends_on:
-      - namenode
-    ports:
-      - "9864:9864"
-    environment:
-      SERVICE_PRECONDITION: "namenode:9870"
-      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
-      HDFS_CONF_dfs_replication: 1
-    volumes:
-      - hadoop_datanode:/hadoop/dfs/data
-    networks:
-      - lakehouse-network
+#
+#  datanode:
+#    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+#    hostname: datanode
+#    container_name: datanode
+#    depends_on:
+#      - namenode
+#    ports:
+#      - "9864:9864"
+#    environment:
+#      SERVICE_PRECONDITION: "namenode:9870"
+#      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+#      HDFS_CONF_dfs_replication: 1
+#    volumes:
+#      - hadoop_datanode:/hadoop/dfs/data
+#    networks:
+#      - lakehouse-network
 
 
   spark-master:
@@ -94,7 +93,7 @@ services:
     environment:
       SPARK_MASTER_PORT: 7077
       SPARK_MASTER_WEBUI_PORT: 8080
-      SPARK_HADOOP_FS_DEFAULTFS: hdfs://namenode:9000
+      SPARK_HADOOP_FS_DEFAULTFS: s3a://mybucket
     networks:
       - lakehouse-network
     volumes:
@@ -143,7 +142,8 @@ services:
     hostname: clickhouse
     ports:
       - "8123:8123"
-      - "9001:9001"
+      - "9002:9000"
+      - "9003:9001"
     environment:
       CLICKHOUSE_DB: ecommerce
       CLICKHOUSE_USER: admin
@@ -151,12 +151,6 @@ services:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-    healthcheck:
-      test: [ "CMD-SHELL", "echo 'SELECT 1' | clickhouse-client --host localhost --port 9000 --user=admin --password=password || exit 1" ]
-      start_period: 15s
-      interval: 10s
-      timeout: 5s
-      retries: 3
     networks:
       - lakehouse-network
 
@@ -268,18 +262,48 @@ services:
       timeout: 10s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    hostname: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+    command: server /data/minio --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - lakehouse-network
+
+  mc:
+    image: minio/mc:latest
+    container_name: mc
+    hostname: mc
+    depends_on:
+      - minio
+    entrypoint: >
+      sh -c "
+      sleep 10 &&
+      mc alias set local http://minio:9000 admin password &&
+      mc mb local/mybucket &&
+      mc policy set public local/mybucket
+      "
+    networks:
+      - lakehouse-network
+
 
 networks:
   lakehouse-network:
     driver: bridge
 
-
-
-
 volumes:
-  hadoop_namenode:
-  hadoop_datanode:
+#  hadoop_namenode:
+#  hadoop_datanode:
   clickhouse_data:
+  minio_data:
   prometheus_data:
   grafana_data:
 
