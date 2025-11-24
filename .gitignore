@@ -1,4 +1,7 @@
 .venv
 .idea
-
+data/*.csv
 .env
+.csv
+*.log
+logs/
