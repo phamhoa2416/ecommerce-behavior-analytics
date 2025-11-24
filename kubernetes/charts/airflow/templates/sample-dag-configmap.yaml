@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "airflow.name" . }}-sample-dags
+  labels:
+    {{ include "airflow.labels" . | nindent 4 }}
+data:
+  batch_processing_dag.py: |
+    """
+    Sample DAG for batch processing ecommerce data from Kafka to HDFS
+    This DAG runs daily and processes batch data using Spark
+
+    Prerequisites:
+    - Airflow variables must be set (kafka_bootstrap_servers, hdfs_namenode, etc.)
+    - Spark batch consumer script must be available at /opt/airflow/dags/spark_batch_consumer.py
+    """
+    from datetime import datetime, timedelta
+    from airflow import DAG
+    from airflow.operators.bash import BashOperator
+    from airflow.operators.python import PythonOperator
+    from airflow.models import Variable
+    from airflow.utils.dates import days_ago
+
+    # Get variables from Airflow Variables
+    def get_var(var_name, default=None):
+        try:
+            return Variable.get(var_name)
+        except:
+            return default
+
+    default_args = {
+        'owner': 'data-engineering',
+        'depends_on_past': False,
+        'email_on_failure': False,
+        'email_on_retry': False,
+        'retries': 1,
+        'retry_delay': timedelta(minutes=5),
+    }
+
+    dag = DAG(
+        'batch_ecommerce_processing',
+        default_args=default_args,
+        description='Batch processing of ecommerce data from Kafka to HDFS',
+        schedule_interval=timedelta(days=1),  # Run daily
+        start_date=days_ago(1),
+        catchup=False,
+        tags=['batch', 'kafka', 'hdfs', 'spark'],
+    )
+
+    # Task 1: Check Kafka connectivity
+    def check_kafka_task():
+        import socket
+        kafka_servers = get_var('kafka_bootstrap_servers', 'kafka-0.kafka-headless:9092')
+        host, port = kafka_servers.split(':')
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex((host, int(port)))
+        sock.close()
+        if result != 0:
+            raise Exception(f"Cannot connect to Kafka at {kafka_servers}")
+        print(f"Successfully connected to Kafka at {kafka_servers}")
+
+    check_kafka = PythonOperator(
+        task_id='check_kafka_connectivity',
+        python_callable=check_kafka_task,
+        dag=dag,
+    )
+
+    # Task 2: Check HDFS connectivity
+    def check_hdfs_task():
+        import socket
+        hdfs_namenode = get_var('hdfs_namenode', 'hadoop-namenode:9000')
+        host, port = hdfs_namenode.split(':')
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex((host, int(port)))
+        sock.close()
+        if result != 0:
+            raise Exception(f"Cannot connect to HDFS NameNode at {hdfs_namenode}")
+        print(f"Successfully connected to HDFS NameNode at {hdfs_namenode}")
+
+    check_hdfs = PythonOperator(
+        task_id='check_hdfs_connectivity',
+        python_callable=check_hdfs_task,
+        dag=dag,
+    )
+
+    # Task 3: Run Spark batch processing job
+    # Note: This uses BashOperator to run spark-submit
+    # For production, consider using KubernetesPodOperator to run Spark jobs in separate pods
+    spark_batch_job = BashOperator(
+        task_id='spark_batch_processing',
+        bash_command='''
+        echo "Running Spark batch processing job..."
+        echo "Kafka Bootstrap Servers: {{ var.value.kafka_bootstrap_servers }}"
+        echo "HDFS Output Path: {{ var.value.hdfs_output_path }}"
+
+        # This is a placeholder - replace with actual spark-submit command
+        # spark-submit \
+        #   --master {{ var.value.spark_master }} \
+        #   --packages {{ var.value.spark_jars_packages }} \
+        #   /opt/airflow/dags/spark_batch_consumer.py
+
+        echo "Spark batch processing job completed"
+        ''',
+        dag=dag,
+    )
+
+    # Task 4: Verify data in HDFS
+    verify_hdfs = BashOperator(
+        task_id='verify_hdfs_data',
+        bash_command='''
+        echo "Verifying data in HDFS..."
+        echo "HDFS Output Path: {{ var.value.hdfs_output_path }}"
+        # Add actual HDFS verification commands here
+        # hdfs dfs -ls {{ var.value.hdfs_output_path }}
+        echo "Data verification complete"
+        ''',
+        dag=dag,
+    )
+
+    # Define task dependencies
+    check_kafka >> check_hdfs >> spark_batch_job >> verify_hdfs
+

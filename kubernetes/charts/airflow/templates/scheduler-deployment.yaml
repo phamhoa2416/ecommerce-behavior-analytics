@@ -1,0 +1,234 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "airflow.name" . }}-scheduler
+  labels:
+    {{ include "airflow.labels" . | nindent 4 }}
+    component: scheduler
+spec:
+  replicas: {{ .Values.airflow.scheduler.replicas }}
+  selector:
+    matchLabels:
+      {{ include "airflow.selectorLabels" . | nindent 6 }}
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        {{ include "airflow.selectorLabels" . | nindent 8 }}
+        component: scheduler
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL at {{ include "airflow.postgres.service" . }}:5432..."
+              until nc -z {{ include "airflow.postgres.service" . }} 5432; do
+                echo "PostgreSQL is unavailable - sleeping"
+                sleep 2
+              done
+              echo "PostgreSQL is up!"
+        - name: init-database
+          image: {{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}
+          imagePullPolicy: {{ .Values.airflow.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Initializing Airflow database..."
+              airflow db init
+              echo "Creating admin user..."
+              airflow users create \
+                --username admin \
+                --firstname Admin \
+                --lastname User \
+                --role Admin \
+                --email admin@airflow.com \
+                --password admin 2>/dev/null || echo "User may already exist"
+              echo "Database initialization complete!"
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: {{ .Values.airflow.config.core.executor }}
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: database-url
+            - name: AIRFLOW__CORE__FERNET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: fernet-key
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+        - name: setup-connections
+          image: {{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}
+          imagePullPolicy: {{ .Values.airflow.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Setting up Airflow connections..."
+              
+              # Kafka connection
+              airflow connections delete kafka 2>/dev/null || true
+              airflow connections add kafka \
+                --conn-type {{ .Values.airflow.connections.kafka.connType }} \
+                --conn-host {{ .Values.airflow.connections.kafka.host }} \
+                --conn-port {{ .Values.airflow.connections.kafka.port }} \
+                --conn-extra {{ .Values.airflow.connections.kafka.extra | quote }} || echo "Kafka connection may already exist"
+              
+              # HDFS connection
+              airflow connections delete hdfs 2>/dev/null || true
+              airflow connections add hdfs \
+                --conn-type {{ .Values.airflow.connections.hdfs.connType }} \
+                --conn-host {{ .Values.airflow.connections.hdfs.host }} \
+                --conn-port {{ .Values.airflow.connections.hdfs.port }} \
+                --conn-extra {{ .Values.airflow.connections.hdfs.extra | quote }} || echo "HDFS connection may already exist"
+              
+              # ClickHouse connection
+              airflow connections delete clickhouse 2>/dev/null || true
+              airflow connections add clickhouse \
+                --conn-type {{ .Values.airflow.connections.clickhouse.connType }} \
+                --conn-host {{ .Values.airflow.connections.clickhouse.host }} \
+                --conn-port {{ .Values.airflow.connections.clickhouse.port }} \
+                --conn-login {{ .Values.airflow.connections.clickhouse.login }} \
+                --conn-password {{ .Values.airflow.connections.clickhouse.password }} \
+                --conn-schema {{ .Values.airflow.connections.clickhouse.schema }} || echo "ClickHouse connection may already exist"
+              
+              echo "Connections setup complete!"
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: {{ .Values.airflow.config.core.executor }}
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: database-url
+            - name: AIRFLOW__CORE__FERNET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: fernet-key
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+        - name: setup-variables
+          image: {{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}
+          imagePullPolicy: {{ .Values.airflow.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Setting up Airflow variables..."
+              
+              # Set variables
+              {{- range $key, $value := .Values.airflow.variables }}
+              airflow variables set {{ $key }} {{ $value | quote }} || echo "Variable {{ $key }} may already exist"
+              {{- end }}
+              
+              echo "Variables setup complete!"
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: {{ .Values.airflow.config.core.executor }}
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: database-url
+            - name: AIRFLOW__CORE__FERNET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: fernet-key
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+      containers:
+        - name: scheduler
+          image: {{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}
+          imagePullPolicy: {{ .Values.airflow.image.pullPolicy }}
+          command:
+            - airflow
+            - scheduler
+          env:
+            {{- range .Values.airflow.env }}
+            - name: {{ .name }}
+              {{- if .value }}
+              value: {{ .value | quote }}
+              {{- end }}
+            {{- if .valueFrom }}
+              valueFrom:
+                {{ toYaml .valueFrom | nindent 16 }}
+            {{- end }}
+            {{- end }}
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: {{ .Values.airflow.config.core.executor }}
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: database-url
+            - name: AIRFLOW__CORE__FERNET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: fernet-key
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+            - name: dags
+              mountPath: /opt/airflow/dags
+{{/*            - name: sample-dags*/}}
+{{/*              mountPath: /opt/airflow/dags/sample*/}}
+            - name: logs
+              mountPath: /opt/airflow/logs
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pgrep -f 'airflow scheduler' || exit 1"
+            initialDelaySeconds: 90
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pgrep -f 'airflow scheduler' || exit 1"
+            initialDelaySeconds: 90
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 5
+          resources:
+            {{ toYaml .Values.airflow.scheduler.resources | nindent 12 }}
+      volumes:
+        - name: airflow-config
+          configMap:
+            name: {{ include "airflow.name" . }}-config
+        - name: dags
+          {{- if .Values.airflow.dags.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "airflow.name" . }}-dags
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{/*        - name: sample-dags*/}}
+{{/*          configMap:*/}}
+{{/*            name: {{ include "airflow.name" . }}-sample-dags*/}}
+        - name: logs
+          emptyDir: {}
+

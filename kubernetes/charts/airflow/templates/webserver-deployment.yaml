@@ -1,0 +1,145 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "airflow.name" . }}-webserver
+  labels:
+    {{ include "airflow.labels" . | nindent 4 }}
+    component: webserver
+spec:
+  replicas: {{ .Values.airflow.webserver.replicas }}
+  selector:
+    matchLabels:
+      {{ include "airflow.selectorLabels" . | nindent 6 }}
+      component: webserver
+  template:
+    metadata:
+      labels:
+        {{ include "airflow.selectorLabels" . | nindent 8 }}
+        component: webserver
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL at {{ include "airflow.postgres.service" . }}:5432..."
+              until nc -z {{ include "airflow.postgres.service" . }} 5432; do
+                echo "PostgreSQL is unavailable - sleeping"
+                sleep 2
+              done
+              echo "PostgreSQL is up!"
+        - name: wait-for-database-init
+          image: {{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}
+          imagePullPolicy: {{ .Values.airflow.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Airflow database to be initialized..."
+              until airflow db check; do
+                echo "Database not ready, waiting..."
+                sleep 5
+              done
+              echo "Database is ready!"
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: {{ .Values.airflow.config.core.executor }}
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: database-url
+            - name: AIRFLOW__CORE__FERNET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: fernet-key
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+      containers:
+        - name: webserver
+          image: {{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}
+          imagePullPolicy: {{ .Values.airflow.image.pullPolicy }}
+          command:
+            - airflow
+            - webserver
+          ports:
+            - name: http
+              containerPort: {{ .Values.airflow.webserver.port }}
+              protocol: TCP
+          env:
+            {{- range .Values.airflow.env }}
+            - name: {{ .name }}
+              {{- if .value }}
+              value: {{ .value | quote }}
+              {{- end }}
+            {{- if .valueFrom }}
+              valueFrom:
+                {{ toYaml .valueFrom | nindent 16 }}
+            {{- end }}
+            {{- end }}
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: {{ .Values.airflow.config.core.executor }}
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: database-url
+            - name: AIRFLOW__CORE__FERNET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "airflow.name" . }}-secret
+                  key: fernet-key
+            - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+              value: {{ .Values.airflow.config.webserver.exposeConfig | quote }}
+            - name: AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE
+              value: {{ .Values.airflow.config.webserver.defaultUiTimezone | quote }}
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+            - name: dags
+              mountPath: /opt/airflow/dags
+{{/*            - name: sample-dags*/}}
+{{/*              mountPath: /opt/airflow/dags/sample*/}}
+            - name: logs
+              mountPath: /opt/airflow/logs
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{ toYaml .Values.airflow.webserver.resources | nindent 12 }}
+      volumes:
+        - name: airflow-config
+          configMap:
+            name: {{ include "airflow.name" . }}-config
+        - name: dags
+          {{- if .Values.airflow.dags.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "airflow.name" . }}-dags
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{/*        - name: sample-dags*/}}
+{{/*          configMap:*/}}
+{{/*            name: {{ include "airflow.name" . }}-sample-dags*/}}
+        - name: logs
+          emptyDir: {}
+

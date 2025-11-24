@@ -5,7 +5,11 @@ from pyspark.sql.types import StructType, StructField, StringType, LongType, Dou
 def create_spark_session(app_name="Spark Application"):
     spark = SparkSession.builder \
         .appName(app_name) \
-        .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0") \
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
+            "com.clickhouse:clickhouse-jdbc:0.6.0"
+        ) \
         .master("local[*]") \
         .getOrCreate()
     

@@ -1,67 +1,7 @@
 ---
 # ==============================
-# PostgreSQL for Hive Metastore
-# ==============================
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres-metastore
-  labels:
-    app: postgres-metastore
-spec:
-  type: ClusterIP
-  ports:
-    - port: 5432
-      targetPort: 5432
-      protocol: TCP
-      name: postgres
-  selector:
-    app: postgres-metastore
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: postgres-metastore
-  labels:
-    app: postgres-metastore
-spec:
-  serviceName: postgres-metastore
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres-metastore
-  template:
-    metadata:
-      labels:
-        app: postgres-metastore
-    spec:
-      containers:
-        - name: postgres
-          image: postgres:15
-          ports:
-            - containerPort: 5432
-              protocol: TCP
-          env:
-            - name: POSTGRES_DB
-              value: metastore
-            - name: POSTGRES_USER
-              value: hive
-            - name: POSTGRES_PASSWORD
-              value: hivepassword
-          volumeMounts:
-            - name: postgres-data
-              mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-    - metadata:
-        name: postgres-data
-      spec:
-        accessModes: [ "ReadWriteOnce" ]
-        resources:
-          requests:
-            storage: 5Gi
----
-# ==============================
 # Hive Metastore
+# Uses shared PostgreSQL from root chart
 # ==============================
 apiVersion: v1
 kind: Service
@@ -101,8 +41,8 @@ spec:
           command: [ 'sh', '-c' ]
           args:
             - |
-              echo "Waiting for PostgreSQL..."
-              until nc -z postgres-metastore 5432; do
+              echo "Waiting for PostgreSQL at {{ include "trino.postgres.service" . }}:5432..."
+              until nc -z {{ include "trino.postgres.service" . }} 5432; do
                 echo "PostgreSQL not ready, waiting..."
                 sleep 5
               done
@@ -130,15 +70,15 @@ spec:
             - name: HIVE_METASTORE_DB_TYPE
               value: postgres
             - name: HIVE_METASTORE_DB_HOST
-              value: postgres-metastore
+              value: {{ include "trino.postgres.service" . }}
             - name: HIVE_METASTORE_DB_PORT
-              value: "5432"
+              value: {{ .Values.postgres.port | quote }}
             - name: HIVE_METASTORE_DB_NAME
-              value: metastore
+              value: {{ .Values.postgres.database }}
             - name: HIVE_METASTORE_DB_USER
-              value: hive
+              value: {{ .Values.postgres.user }}
             - name: HIVE_METASTORE_DB_PASS
-              value: hivepassword
+              value: {{ .Values.postgres.password }}
           command: [ "/bin/sh", "-c" ]
           args:
             - |
@@ -149,7 +89,7 @@ spec:
               <configuration>
                 <property>
                   <name>javax.jdo.option.ConnectionURL</name>
-                  <value>jdbc:postgresql://postgres-metastore:5432/metastore</value>
+                  <value>jdbc:postgresql://{{ include "trino.postgres.service" . }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}</value>
                 </property>
                 <property>
                   <name>javax.jdo.option.ConnectionDriverName</name>
@@ -157,11 +97,11 @@ spec:
                 </property>
                 <property>
                   <name>javax.jdo.option.ConnectionUserName</name>
-                  <value>hive</value>
+                  <value>{{ .Values.postgres.user }}</value>
                 </property>
                 <property>
                   <name>javax.jdo.option.ConnectionPassword</name>
-                  <value>hivepassword</value>
+                  <value>{{ .Values.postgres.password }}</value>
                 </property>
                 <property>
                   <name>datanucleus.autoCreateSchema</name>
