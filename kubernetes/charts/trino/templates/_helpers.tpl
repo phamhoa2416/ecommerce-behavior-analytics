@@ -31,3 +31,14 @@ Selector labels
 app.kubernetes.io/name: {{ include "trino.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+PostgreSQL service name - uses shared postgres from root chart
+*/}}
+{{ define "trino.postgres.service" -}}
+{{- if .Values.postgres.serviceName }}
+{{ .Values.postgres.serviceName }}
+{{- else }}
+{{ printf "%s-postgres" .Release.Name }}
+{{- end }}
+{{- end }}

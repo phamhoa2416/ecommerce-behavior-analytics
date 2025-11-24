@@ -24,8 +24,8 @@ spec:
             - sh
             - -c
             - |
-              echo "Waiting for PostgreSQL..."
-              until nc -z postgres 5432; do
+              echo "Waiting for PostgreSQL at {{ include "airflow.postgres.service" . }}:5432..."
+              until nc -z {{ include "airflow.postgres.service" . }} 5432; do
                 echo "PostgreSQL is unavailable - sleeping"
                 sleep 2
               done

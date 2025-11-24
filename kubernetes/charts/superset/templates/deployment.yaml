@@ -39,9 +39,9 @@ spec:
               echo "Installing required packages..."
               pip install --no-cache-dir psycopg2-binary redis clickhouse-connect
 
-          {{- if .Values.superset.env.database.host }}
+          {{- if or .Values.superset.env.database.host .Values.superset.env.database.type }}
               echo "Waiting for database to be ready..."
-              until pg_isready -h {{ .Values.superset.env.database.host }} -p {{ .Values.superset.env.database.port }}; do
+              until pg_isready -h {{ include "superset.postgres.service" . }} -p {{ .Values.superset.env.database.port }}; do
                 echo "Waiting for PostgreSQL..."
                 sleep 2
               done
@@ -80,11 +80,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "superset.name" . }}-secret
                   key: secret-key
-        {{- if .Values.superset.env.database.host }}
+        {{- if or .Values.superset.env.database.host .Values.superset.env.database.type }}
             - name: DATABASE_DB
               value: {{ .Values.superset.env.database.name }}
             - name: DATABASE_HOST
-              value: {{ .Values.superset.env.database.host }}
+              value: {{ include "superset.postgres.service" . | trim }}
             - name: DATABASE_PORT
               value: {{ .Values.superset.env.database.port | quote }}
             - name: DATABASE_USER
@@ -170,11 +170,11 @@ spec:
                   key: secret-key
             - name: PYTHONPATH
               value: /app/pythonpath
-        {{- if .Values.superset.env.database.host }}
+        {{- if or .Values.superset.env.database.host .Values.superset.env.database.type }}
             - name: DATABASE_DB
               value: {{ .Values.superset.env.database.name }}
             - name: DATABASE_HOST
-              value: {{ .Values.superset.env.database.host }}
+              value: {{ include "superset.postgres.service" . }}
             - name: DATABASE_PORT
               value: {{ .Values.superset.env.database.port | quote }}
             - name: DATABASE_USER

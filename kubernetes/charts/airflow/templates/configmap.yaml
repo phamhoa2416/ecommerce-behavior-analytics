@@ -14,7 +14,7 @@ data:
     dag_concurrency = {{ .Values.airflow.config.core.dagConcurrency }}
     max_active_runs_per_dag = {{ .Values.airflow.config.core.maxActiveRunsPerDag }}
     load_examples = {{ .Values.airflow.config.core.loadExamples }}
-    sql_alchemy_conn = {{ .Values.airflow.config.core.sqlAlchemyConn | quote }}
+    sql_alchemy_conn = {{ include "airflow.database.url" . | quote }}
     default_timezone = {{ .Values.airflow.config.core.defaultTimezone | quote }}
     
     [webserver]
@@ -29,4 +29,5 @@ data:
     
     [api]
     auth_backend = {{ .Values.airflow.config.api.authBackend }}
+
 

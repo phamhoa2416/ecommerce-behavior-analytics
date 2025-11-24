@@ -31,3 +31,14 @@ Selector labels
 app.kubernetes.io/name: {{ include "superset.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+PostgreSQL service name - uses shared postgres from root chart
+*/}}
+{{- define "superset.postgres.service" -}}
+{{- if .Values.superset.env.database.host -}}
+{{- .Values.superset.env.database.host | trim -}}
+{{- else -}}
+{{- printf "%s-postgres" .Release.Name | trim -}}
+{{- end -}}
+{{- end -}}

@@ -9,8 +9,4 @@ keywords:
   - workflow
   - scheduler
   - batch-processing
-dependencies:
-  - name: postgres
-    version: 0.1.0
-    repository: "file://./postgres"
 

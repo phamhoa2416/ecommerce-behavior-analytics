@@ -52,7 +52,8 @@ airflow:
       maxActiveRunsPerDag: 16
       loadExamples: false
       executor: LocalExecutor
-      sqlAlchemyConn: "postgresql+psycopg2://admin:password@postgres:5432/airflow"
+      # Connection string will be constructed in the secret template using the shared postgres service
+      sqlAlchemyConn: ""  # Will be set by template
       fernetKey: "uYbZN0Qc7EseNeKZlEYfEM0c2gy7gFL9OUQ_J0rsCSc="
       defaultTimezone: "UTC"
     
@@ -115,48 +116,16 @@ airflow:
       storageClass: ""
 
   # Extra environment variables
-  env:
-    - name: AIRFLOW__CORE__EXECUTOR
-      value: LocalExecutor
-    - name: AIRFLOW__CORE__FERNET_KEY
-      valueFrom:
-        secretKeyRef:
-          name: airflow-secret
-          key: fernet-key
-    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
-      valueFrom:
-        secretKeyRef:
-          name: airflow-secret
-          key: database-url
+  # Note: AIRFLOW__CORE__EXECUTOR, AIRFLOW__CORE__SQL_ALCHEMY_CONN, and AIRFLOW__CORE__FERNET_KEY
+  # are already set in the deployment templates. Add only additional env vars here.
+  env: []
 
+# PostgreSQL is now managed by the shared postgres chart at the root level
+# The postgres service name will be: {{ .Release.Name }}-postgres
 postgres:
-  replicaCount: 1
-  
-  image:
-    repository: postgres
-    tag: "15"
-    pullPolicy: IfNotPresent
-  
-  service:
-    type: ClusterIP
-    port: 5432
-  
-  postgres:
-    db: airflow
-    user: admin
-    password: password
-  
-  persistence:
-    enabled: true
-    accessMode: ReadWriteOnce
-    size: 3Gi
-    storageClass: ""
-  
-  resources:
-    limits:
-      cpu: 500m
-      memory: 1Gi
-    requests:
-      cpu: 250m
-      memory: 512Mi
+  serviceName: postgres
+  database: airflow
+  user: airflow
+  password: airflow
+  port: 5432
 
