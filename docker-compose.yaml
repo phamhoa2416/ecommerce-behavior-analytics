@@ -246,9 +246,14 @@ services:
     environment:
       - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=True
+      - _AIRFLOW_WWW_USER_CREATE=True
       - _AIRFLOW_WWW_USER_USERNAME=admin
       - _AIRFLOW_WWW_USER_PASSWORD=admin
+      - _AIRFLOW_WWW_USER_FIRSTNAME=Dung
+      - _AIRFLOW_WWW_USER_LASTNAME=Vu
+      - _AIRFLOW_WWW_USER_EMAIL=admin@example.com
       - AIRFLOW__WEBSERVER__WEB_SERVER_PORT=8085
+      
     ports:
       - "8085:8085"
     volumes:

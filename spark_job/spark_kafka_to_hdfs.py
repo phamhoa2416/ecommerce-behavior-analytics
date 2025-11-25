@@ -17,7 +17,12 @@ schema = StructType([
 def main():
     spark = SparkSession.builder \
         .appName("KafkaToHDFS") \
-        .config("spark.hadoop.fs.defaultFS", "hdfs://namenode:9000") \
+        .config("spark.hadoop.fs.defaultFS", "s3a://mybucket")\
+        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")\
+        .config("spark.hadoop.fs.s3a.access.key", "admin")\
+        .config("spark.hadoop.fs.s3a.secret.key", "password")\
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")\
+        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")\
         .getOrCreate()
 
     df = spark.read.format("kafka") \
@@ -39,7 +44,8 @@ def main():
     result.write \
         .mode("append") \
         .partitionBy("event_date") \
-        .parquet("hdfs://namenode:9000/output/events_daily")
+        .parquet("s3a://mybucket/events_daily")
+
 
     print("Done!")
     spark.stop()
