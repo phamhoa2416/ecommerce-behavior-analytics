@@ -1,57 +1,72 @@
 package com.example.batch
 
+import com.example.AppConfig
 import com.example.parser.Parser
 import com.example.schema.Schema
-import com.example.util.{MinioUtils, SparkUtils}
-import org.apache.spark.sql.functions.{col, date_format}
-import org.apache.spark.sql.SaveMode
+import com.example.util.Utils
+import org.apache.spark.sql.functions.{col, dayofmonth, month, year}
+import org.apache.spark.sql.{SaveMode, SparkSession}
+
+import scala.util.{Failure, Success}
 
 object BATCH {
 
   def main(args: Array[String]): Unit = {
-    val spark = SparkUtils.createSparkSession("Kafka-To-Minio-Batch")
-    MinioUtils.configureSparkForMinio(spark)
-    val minioConfig = MinioUtils.loadConfig()
+    val kafkaBootstrapServer = AppConfig.KAFKA_BOOTSTRAP_SERVERS
+    val kafkaTopic = AppConfig.KAFKA_BATCH_TOPIC
+    val kafkaGroupId = AppConfig.KAFKA_GROUP_ID
+    val kafkaStartingOffsets = AppConfig.KAFKA_STARTING_OFFSETS
 
-    // Read from Kafka
-    val kafkaDF = spark.read
-      .format("kafka")
-      .options(SparkUtils.kafkaOptions)
-      .load()
+    val minioEndpoint = AppConfig.MINIO_ENDPOINT
+    val minioAccessKey = AppConfig.MINIO_ACCESS_KEY
+    val minioSecretKey = AppConfig.MINIO_SECRET_KEY
+    val minioBucketName = AppConfig.MINIO_BUCKET_NAME
+    val minioPathStyleAccess = AppConfig.MINIO_PATH_STYLE_ACCESS
 
-    // Parse and normalize events
-    val parsedDF = Parser.parseData(kafkaDF, Schema.schema)
+    val spark = SparkSession.builder()
+      .appName("Batch")
+      .master("local[*]")
+      .getOrCreate()
 
-    // Add partition columns for better data organization
-    val enrichedDF = addPartitionColumns(parsedDF)
+    try {
+      Utils.configureMinIO(spark, minioEndpoint, minioAccessKey, minioSecretKey, minioPathStyleAccess)
+      Utils.checkBucketExists(minioEndpoint, minioAccessKey, minioSecretKey, minioBucketName) match {
+        case Success(_) => println(s"MinIO bucket '$minioBucketName' is ready.")
+        case Failure(exception) =>
+          println(s"Error while checking/creating MinIO bucket: ${exception.getMessage}")
+          sys.exit(1)
+      }
 
-    // Write to MinIO with partitioning
-    val writer = enrichedDF.write
-      .format(minioConfig.fileFormat)
-//      .mode(SaveMode.valueOf(minioConfig.writeMode))
-      .option("path", minioConfig.basePath)
+      val kafkaDf = spark.read
+        .format("kafka")
+        .option("kafka.bootstrap.servers", kafkaBootstrapServer)
+        .option("subscribe", kafkaTopic)
+        .option("startingOffsets", kafkaStartingOffsets)
+        .option("kafka.group.id", kafkaGroupId)
+        .load()
 
-    // Apply partitioning if columns exist
-//    if (minioConfig.partitionColumns.nonEmpty) {
-//      val existingPartitionCols = minioConfig.partitionColumns.filter(colName =>
-//        enrichedDF.columns.contains(colName)
-//      )
-//      if (existingPartitionCols.nonEmpty) {
-//        writer.partitionBy(existingPartitionCols: _*)
-//      }
-//    }
+      println(s"Reading from Kafka topic: $kafkaTopic")
 
-    writer.save()
+      val parsedDF = Parser.parseData(kafkaDf, Schema.schema)
 
-    spark.stop()
-  }
+      val dataWithPartition = parsedDF
+        .withColumn("year", year(col("event_time")))
+        .withColumn("month", month(col("event_time")))
+        .withColumn("day", dayofmonth(col("event_time")))
 
-  private def addPartitionColumns(df: org.apache.spark.sql.DataFrame): org.apache.spark.sql.DataFrame = {
-    // Add date partition column from event_time if it exists
-    if (df.columns.contains("event_time")) {
-      df.withColumn("date", date_format(col("event_time"), "yyyy-MM-dd"))
-    } else {
-      df
+      println(s"Parsed records: ${dataWithPartition.count()}")
+
+      val minioPath = s"s3a://$minioBucketName/ecommerce-batch-data"
+
+      println(s"Writing data to MinIO: $minioPath")
+      dataWithPartition
+        .repartition(col("year"), col("month"), col("day"))
+        .write
+        .mode(SaveMode.Append)
+        .partitionBy("year", "month", "day")
+        .parquet(minioPath)
+
+      println("Batch job completed successfully!")
     }
   }
 }
