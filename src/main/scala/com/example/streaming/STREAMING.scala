@@ -3,14 +3,18 @@ package com.example.streaming
 import com.example.AppConfig
 import com.example.parser.Parser
 import com.example.schema.Schema
-import org.apache.spark.sql.{Dataset, Row, SparkSession}
+import com.example.util.Utils
+import org.apache.spark.sql.{Dataset, Row}
 import org.apache.spark.sql.streaming.StreamingQuery
+import org.slf4j.LoggerFactory
 
 import java.util.Properties
 
 object STREAMING {
+  private val logger = LoggerFactory.getLogger(getClass)
+
   val kafkaBootstrapServer: String = AppConfig.KAFKA_BOOTSTRAP_SERVERS
-  val kafkaTopic: String = AppConfig.KAFKA_BATCH_TOPIC
+  val kafkaTopic: String = AppConfig.KAFKA_STREAM_TOPIC
   val kafkaGroupId: String = AppConfig.KAFKA_GROUP_ID
   val kafkaStartingOffsets: String = AppConfig.KAFKA_STARTING_OFFSETS
 
@@ -21,10 +25,7 @@ object STREAMING {
 
 
   def main(args: Array[String]): Unit = {
-    val spark = SparkSession.builder()
-      .appName("Streaming")
-      .master("local[*]")
-      .getOrCreate()
+    val spark = Utils.createSparkSession("Streaming")
 
     val kafkaDf = spark.readStream
       .format("kafka")
@@ -34,28 +35,45 @@ object STREAMING {
       .option("failOnDataLoss", "false")
       .load()
 
-    val parsedStream = Parser.parseData(kafkaDf, Schema.schema)
+    val parsedStream = Parser.parseData(
+      kafkaDf,
+      Schema.schema,
+      AppConfig.SPARK_TIMESTAMP_PATTERN,
+      AppConfig.SPARK_TIMEZONE
+    ).withWatermark("event_time", "5 minutes")
+      .dropDuplicates("event_time", "user_id", "product_id", "event_type")
 
-    val checkpointLocation = sys.env.getOrElse("CHECKPOINT_LOCATION", "/tmp/checkpoint")
-
-    val connection = new Properties()
-    connection.put("driver", "com.clickhouse.jdbc.ClickHouseDriver")
-    connection.put("user", clickhouseUser)
-    connection.put("password", clickhousePassword)
-
-    val query: StreamingQuery = parsedStream.writeStream
-      .outputMode("append")
-      .option("checkpointLocation", checkpointLocation)
-      .foreachBatch { (batchDF: Dataset[Row], _: Long) =>
-        if (!batchDF.isEmpty) {
-          batchDF.write
-            .mode("append")
-            .jdbc(clickhouseUrl, clickhouseTable, connection)
-        }
-      }
+    val query = parsedStream.writeStream
+      .format("console")       // in ra console
+      .option("truncate", false)
+      .option("numRows", 5)    // show 5 dòng mỗi micro-batch
       .start()
+      .awaitTermination()
 
-    query.awaitTermination()
+//    val checkpointLocation = AppConfig.KAFKA_CHECKPOINT_LOCATION
+//
+//    val connection = new Properties()
+//    connection.put("driver", "com.clickhouse.jdbc.ClickHouseDriver")
+//    connection.put("user", clickhouseUser)
+//    connection.put("password", clickhousePassword)
+//    connection.put("batchsize", AppConfig.CLICKHOUSE_BATCH_SIZE.toString)
+//
+//    val query: StreamingQuery = parsedStream.writeStream
+//      .outputMode("append")
+//      .option("checkpointLocation", checkpointLocation)
+//      .foreachBatch { (batchDF: Dataset[Row], _: Long) =>
+//        if (!batchDF.isEmpty) {
+//          logger.info(s"Writing batch of ${batchDF.count()} records to ClickHouse table $clickhouseTable")
+//          batchDF.write
+//            .mode("append")
+//            .jdbc(clickhouseUrl, clickhouseTable, connection)
+//        } else {
+//          logger.debug("Skipping empty micro-batch.")
+//        }
+//      }
+//      .start()
+//
+//    query.awaitTermination()
   }
 }
 

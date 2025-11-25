@@ -3,16 +3,16 @@
 -- =============================
 CREATE TABLE ecommerce_events
 (
-    event_time    DateTime('UTC'),
+    event_time    DateTime,
     event_type    String,
-    product_id    UInt64,
-    category_id   UInt64,
+    product_id    Nullable(UInt64),
+    category_id   Nullable(UInt64),
     category_code String,
     brand         String,
-    price         Float64,
-    user_id       UInt64,
+    price         Nullable(Float64),
+    user_id       Nullable(UInt64),
     user_session  String
 ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(event_time)
-        ORDER BY (event_time, user_id);
+        ORDER BY (event_time);
 

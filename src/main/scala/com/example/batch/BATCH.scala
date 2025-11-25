@@ -4,18 +4,25 @@ import com.example.AppConfig
 import com.example.parser.Parser
 import com.example.schema.Schema
 import com.example.util.Utils
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions.{col, dayofmonth, month, year}
-import org.apache.spark.sql.{SaveMode, SparkSession}
+import org.slf4j.LoggerFactory
 
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 object BATCH {
+  private val logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
-    val kafkaBootstrapServer = AppConfig.KAFKA_BOOTSTRAP_SERVERS
-    val kafkaTopic = AppConfig.KAFKA_BATCH_TOPIC
-    val kafkaGroupId = AppConfig.KAFKA_GROUP_ID
-    val kafkaStartingOffsets = AppConfig.KAFKA_STARTING_OFFSETS
+    val spark = Utils.createSparkSession("Batch")
+
+    val kafkaOptions = Map(
+      "kafka.bootstrap.servers" -> AppConfig.KAFKA_BOOTSTRAP_SERVERS,
+      "subscribe" -> AppConfig.KAFKA_BATCH_TOPIC,
+      "startingOffsets" -> AppConfig.KAFKA_STARTING_OFFSETS,
+      "kafka.group.id" -> AppConfig.KAFKA_GROUP_ID
+    ) ++ AppConfig.KAFKA_ENDING_OFFSETS.map("endingOffsets" -> _)
 
     val minioEndpoint = AppConfig.MINIO_ENDPOINT
     val minioAccessKey = AppConfig.MINIO_ACCESS_KEY
@@ -23,42 +30,39 @@ object BATCH {
     val minioBucketName = AppConfig.MINIO_BUCKET_NAME
     val minioPathStyleAccess = AppConfig.MINIO_PATH_STYLE_ACCESS
 
-    val spark = SparkSession.builder()
-      .appName("Batch")
-      .master("local[*]")
-      .getOrCreate()
-
     try {
       Utils.configureMinIO(spark, minioEndpoint, minioAccessKey, minioSecretKey, minioPathStyleAccess)
       Utils.checkBucketExists(minioEndpoint, minioAccessKey, minioSecretKey, minioBucketName) match {
-        case Success(_) => println(s"MinIO bucket '$minioBucketName' is ready.")
+        case Success(_) => logger.info(s"MinIO bucket '$minioBucketName' is ready.")
         case Failure(exception) =>
-          println(s"Error while checking/creating MinIO bucket: ${exception.getMessage}")
+          logger.error(s"Error while checking/creating MinIO bucket '$minioBucketName'", exception)
           sys.exit(1)
       }
 
       val kafkaDf = spark.read
         .format("kafka")
-        .option("kafka.bootstrap.servers", kafkaBootstrapServer)
-        .option("subscribe", kafkaTopic)
-        .option("startingOffsets", kafkaStartingOffsets)
-        .option("kafka.group.id", kafkaGroupId)
+        .options(kafkaOptions)
         .load()
 
-      println(s"Reading from Kafka topic: $kafkaTopic")
+      logger.info(s"Reading from Kafka topic: ${AppConfig.KAFKA_BATCH_TOPIC}")
 
-      val parsedDF = Parser.parseData(kafkaDf, Schema.schema)
+      val parsedDF = Parser.parseData(
+        kafkaDf,
+        Schema.schema,
+        AppConfig.SPARK_TIMESTAMP_PATTERN,
+        AppConfig.SPARK_TIMEZONE
+      )
 
       val dataWithPartition = parsedDF
         .withColumn("year", year(col("event_time")))
         .withColumn("month", month(col("event_time")))
         .withColumn("day", dayofmonth(col("event_time")))
 
-      println(s"Parsed records: ${dataWithPartition.count()}")
+      logger.info(s"Parsed record count: ${dataWithPartition.count()}")
 
-      val minioPath = s"s3a://$minioBucketName/ecommerce-batch-data"
+      val minioPath = s"s3a://$minioBucketName/ecommerce_events/"
 
-      println(s"Writing data to MinIO: $minioPath")
+      logger.info(s"Writing data to MinIO: $minioPath")
       dataWithPartition
         .repartition(col("year"), col("month"), col("day"))
         .write
@@ -66,7 +70,13 @@ object BATCH {
         .partitionBy("year", "month", "day")
         .parquet(minioPath)
 
-      println("Batch job completed successfully!")
+      logger.info("Batch job completed successfully!")
+    } catch {
+      case NonFatal(ex) =>
+        logger.error("Batch job failed", ex)
+        throw ex
+    } finally {
+      spark.stop()
     }
   }
 }
