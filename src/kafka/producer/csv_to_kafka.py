@@ -87,5 +87,5 @@ def csv_to_kafka(csv_file, delay=1.0):
     logger.info("All messages flushed and sent successfully!")
 
 if __name__ == "__main__":
-    csv_file_path = "2019-Oct.csv"
+    csv_file_path = "example.csv"
     csv_to_kafka(csv_file_path, delay=1.0)
