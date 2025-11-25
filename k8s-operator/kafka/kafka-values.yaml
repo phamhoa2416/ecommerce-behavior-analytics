@@ -29,6 +29,11 @@ spec:
       port: 9094
       type: nodeport
       tls: false
+      configuration:
+        brokers:
+          - broker: 0
+            advertisedHost: localhost
+            advertisedPort: 9094
     config:
       auto.create.topics.enable: true
       num.partitions: 3
