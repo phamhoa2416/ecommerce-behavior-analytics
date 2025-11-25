@@ -1,0 +1,14 @@
+target/*
+!target/scala-2.12/*-assembly*.jar
+project/target/
+.idea/
+*.iml
+.git/
+.gitignore
+data/
+*.log
+*.out
+.vscode/
+*.swp
+*.swo
+*~
