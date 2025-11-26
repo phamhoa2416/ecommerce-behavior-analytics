@@ -6,7 +6,7 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "docker.io/library/spark-batch:v3.4"
+  image: "docker.io/library/spark-app:v1.1"
   sparkVersion: "3.5.1"
   mainClass: "com.example.batch.BATCH"
   mainApplicationFile: "local:///opt/spark/jars/app.jar"
@@ -29,9 +29,17 @@ spec:
     coreLimit: "1200m"
     memory: "1g"
     serviceAccount: spark-operator-spark
+    env:
+      - name: ENV_JOB_RUN
+        value: "prod"
+
 
   executor:
     cores: 1
     instances: 2
     memory: "1g"
+    env:
+      - name: ENV_JOB_RUN
+        value: "prod"
+
 
