@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: spark-operator-spark
+  name: spark-operator
   namespace: default
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: spark-operator-spark-role
+  name: spark-operator-role
   namespace: default
 rules:
 - apiGroups: [""]
-  resources: ["pods", "services", "configmaps"]
+  resources: ["pods", "pods/exec", "services", "configmaps", "secrets", "sparkapplications"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: [""]
   resources: ["pods/log"]
@@ -20,13 +20,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: spark-operator-spark-rolebinding
+  name: spark-operator-rolebinding
   namespace: default
 subjects:
 - kind: ServiceAccount
-  name: spark-operator-spark
+  name: spark-operator
   namespace: default
 roleRef:
   kind: Role
-  name: spark-operator-spark-role
+  name: spark-operator-role
   apiGroup: rbac.authorization.k8s.io
