@@ -1,0 +1,6 @@
+apiVersion: v2
+name: hive-metastore
+description: Helm chart for Apache Hive Metastore connected to PostgreSQL and HDFS
+type: application
+version: 0.1.0
+appVersion: "4.0.0"

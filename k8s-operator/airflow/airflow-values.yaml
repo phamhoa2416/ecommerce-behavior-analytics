@@ -1,0 +1,51 @@
+executor: "KubernetesExecutor"
+
+postgresql:
+  enabled: true
+  auth:
+    username: airflow
+    password: airflow
+    database: airflow
+
+flower:
+  enabled: false
+
+logs:
+  persistence:
+    enabled: false
+
+webserver:
+  defaultUser:
+    enabled: true
+    username: admin
+    password: admin
+  serviceAccount:
+    create: true
+    name: "airflow-webserver"
+
+dags:
+  gitSync:
+    enabled: false
+  persistence:
+    enabled: false
+
+extraVolumes:
+  - name: dags-local
+    hostPath:
+      path: /mnt/dags
+      type: Directory
+
+extraVolumeMounts:
+  - name: dags-local
+    mountPath: /opt/airflow/dags
+    readOnly: true
+
+serviceAccount:
+  create: true
+  name: airflow-sa
+rbac:
+  create: true
+
+env:
+  - name: AIRFLOW__KUBERNETES__DELETE_WORKER_PODS
+    value: "False"
