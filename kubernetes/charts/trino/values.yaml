@@ -64,3 +64,12 @@ trino:
       hdfs:
         configResources: "/etc/hadoop/core-site.xml,/etc/hadoop/hdfs-site.xml"
 
+# PostgreSQL is now managed by the shared postgres chart at the root level
+# The postgres service name will be: {{ .Release.Name }}-postgres
+postgres:
+  serviceName: ""  # Will default to {{ .Release.Name }}-postgres in templates
+  database: metastore
+  user: hive_user
+  password: hive_password
+  port: 5432
+

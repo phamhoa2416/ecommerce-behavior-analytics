@@ -1,0 +1,25 @@
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: minio
+  namespace: minio
+spec:
+  requestAutoCert: true
+  configuration:
+    name: storage-configuration
+  image: quay.io/minio/minio:RELEASE.2024-10-02T17-50-41Z
+  mountPath: /export
+  pools:
+    - name: pool-0
+      servers: 1
+      volumesPerServer: 3
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 3Gi
+          storageClassName: standard
+  users:
+    - name: storage-user

@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "postgres.fullname" . }}
+  name: {{ include "postgres.hive-metastore.fullname" . }}
   labels:
-    app: {{ include "postgres.name" . }}
+    app: {{ include "postgres.hive-metastore.name" . }}
 spec:
-  serviceName: {{ include "postgres.fullname" . }}
+  serviceName: {{ include "postgres.hive-metastore.fullname" . }}
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "postgres.name" . }}
+      app: {{ include "postgres.hive-metastore.name" . }}
   template:
     metadata:
       labels:
-        app: {{ include "postgres.name" . }}
+        app: {{ include "postgres.hive-metastore.name" . }}
     spec:
       containers:
         - name: postgres
