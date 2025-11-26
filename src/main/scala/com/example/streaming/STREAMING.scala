@@ -43,37 +43,30 @@ object STREAMING {
     ).withWatermark("event_time", "5 minutes")
       .dropDuplicates("event_time", "user_id", "product_id", "event_type")
 
-    val query = parsedStream.writeStream
-      .format("console")       // in ra console
-      .option("truncate", false)
-      .option("numRows", 5)    // show 5 dòng mỗi micro-batch
-      .start()
-      .awaitTermination()
+    val checkpointLocation = AppConfig.KAFKA_CHECKPOINT_LOCATION
 
-//    val checkpointLocation = AppConfig.KAFKA_CHECKPOINT_LOCATION
-//
-//    val connection = new Properties()
-//    connection.put("driver", "com.clickhouse.jdbc.ClickHouseDriver")
-//    connection.put("user", clickhouseUser)
-//    connection.put("password", clickhousePassword)
-//    connection.put("batchsize", AppConfig.CLICKHOUSE_BATCH_SIZE.toString)
-//
-//    val query: StreamingQuery = parsedStream.writeStream
-//      .outputMode("append")
-//      .option("checkpointLocation", checkpointLocation)
-//      .foreachBatch { (batchDF: Dataset[Row], _: Long) =>
-//        if (!batchDF.isEmpty) {
-//          logger.info(s"Writing batch of ${batchDF.count()} records to ClickHouse table $clickhouseTable")
-//          batchDF.write
-//            .mode("append")
-//            .jdbc(clickhouseUrl, clickhouseTable, connection)
-//        } else {
-//          logger.debug("Skipping empty micro-batch.")
-//        }
-//      }
-//      .start()
-//
-//    query.awaitTermination()
+    val connection = new Properties()
+    connection.put("driver", "com.clickhouse.jdbc.ClickHouseDriver")
+    connection.put("user", clickhouseUser)
+    connection.put("password", clickhousePassword)
+    connection.put("batchsize", AppConfig.CLICKHOUSE_BATCH_SIZE.toString)
+
+    val query: StreamingQuery = parsedStream.writeStream
+      .outputMode("append")
+      .option("checkpointLocation", checkpointLocation)
+      .foreachBatch { (batchDF: Dataset[Row], _: Long) =>
+        if (!batchDF.isEmpty) {
+          logger.info(s"Writing batch of ${batchDF.count()} records to ClickHouse table $clickhouseTable")
+          batchDF.write
+            .mode("append")
+            .jdbc(clickhouseUrl, clickhouseTable, connection)
+        } else {
+          logger.debug("Skipping empty micro-batch.")
+        }
+      }
+      .start()
+
+    query.awaitTermination()
   }
 }
 
