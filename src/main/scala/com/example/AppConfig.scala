@@ -15,7 +15,6 @@ object AppConfig {
     groupId: String,
     checkpointLocation: String,
     startingOffsets: String,
-    endingOffsets: Option[String]
   )
 
   final case class MinioSettings(
@@ -84,10 +83,7 @@ object AppConfig {
     streamTopic = envOrConfig("KAFKA_STREAM_TOPIC", kafkaConfig.getString("stream_topic")),
     groupId = envOrConfig("KAFKA_GROUP_ID", kafkaConfig.getString("group_id")),
     checkpointLocation = envOrConfig("KAFKA_CHECKPOINT_LOCATION", kafkaConfig.getString("checkpoint_location")),
-    startingOffsets = envOrConfig("KAFKA_STARTING_OFFSETS", kafkaConfig.getString("starting_offsets")),
-    endingOffsets = sys.env.get("KAFKA_ENDING_OFFSETS").orElse {
-      if (kafkaConfig.hasPath("ending_offsets")) Some(kafkaConfig.getString("ending_offsets")) else None
-    }
+    startingOffsets = envOrConfig("KAFKA_STARTING_OFFSETS", kafkaConfig.getString("starting_offsets"))
   )
 
   val minioSettings: MinioSettings = MinioSettings(
@@ -127,7 +123,6 @@ object AppConfig {
   val KAFKA_GROUP_ID: String = kafkaSettings.groupId
   val KAFKA_CHECKPOINT_LOCATION: String = kafkaSettings.checkpointLocation
   val KAFKA_STARTING_OFFSETS: String = kafkaSettings.startingOffsets
-  val KAFKA_ENDING_OFFSETS: Option[String] = kafkaSettings.endingOffsets
 
   val MINIO_ENDPOINT: String = minioSettings.endpoint
   val MINIO_ACCESS_KEY: String = minioSettings.accessKey
