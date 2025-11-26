@@ -22,7 +22,7 @@ object BATCH {
       "subscribe" -> AppConfig.KAFKA_BATCH_TOPIC,
       "startingOffsets" -> AppConfig.KAFKA_STARTING_OFFSETS,
       "kafka.group.id" -> AppConfig.KAFKA_GROUP_ID
-    ) ++ AppConfig.KAFKA_ENDING_OFFSETS.map("endingOffsets" -> _)
+    )
 
     val minioEndpoint = AppConfig.MINIO_ENDPOINT
     val minioAccessKey = AppConfig.MINIO_ACCESS_KEY
