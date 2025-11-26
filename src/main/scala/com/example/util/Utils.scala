@@ -19,7 +19,7 @@ object Utils {
     hadoopConf.set("fs.s3a.endpoint", endpoint)
     hadoopConf.set("fs.s3a.access.key", accessKey)
     hadoopConf.set("fs.s3a.secret.key", secretKey)
-    hadoopConf.set("fs.s3a.connection.ssl.enabled", "true")
+    hadoopConf.set("fs.s3a.connection.ssl.enabled", "false")
     hadoopConf.set("fs.s3a.path.style.access", pathStyleAccess)
     hadoopConf.set("fs.s3a.impl", classOf[S3AFileSystem].getName)
     hadoopConf.set("fs.s3a.connection.maximum", "15")
@@ -38,7 +38,9 @@ object Utils {
         .withCredentials(new AWSStaticCredentialsProvider(credentials))
         .build()
 
-      if (!s3Client.doesBucketExistV2(bucket)) {
+      val bucketExists = Try(s3Client.listObjects(bucket)).isSuccess
+
+      if (!bucketExists) {
         logger.info(s"Bucket '$bucket' not found. Creating it on $endpoint.")
         s3Client.createBucket(bucket)
       } else {
