@@ -1,11 +1,23 @@
 executor: "KubernetesExecutor"
 
 postgresql:
+  image:
+    repository: bitnami/postgresql
+    tag: latest
+    pullPolicy: IfNotPresent
   enabled: true
   auth:
-    username: airflow
-    password: airflow
-    database: airflow
+#    username: "airflow"
+#    password: "airflow"
+#    database: "airflow"
+    existingSecret: airflow-secret
+    usernameKey: postgres-user
+    passwordKey: postgres-password
+    databaseKey: postgres-db
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: standard
 
 flower:
   enabled: false
@@ -14,11 +26,27 @@ logs:
   persistence:
     enabled: false
 
+scheduler:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+triggerer:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
 webserver:
   defaultUser:
-    enabled: true
-    username: admin
-    password: admin
+    enabled: false
   serviceAccount:
     create: true
     name: "airflow-webserver"
