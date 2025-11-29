@@ -1,0 +1,57 @@
+#ingress:
+#  enabled: true
+#  hosts:
+#    - host: superset.local
+#      paths:
+#        - path: /
+#          pathType: Prefix
+#  annotations:
+#    kubernetes.io/ingress.class: "nginx"
+
+service:
+  type: ClusterIP
+  port: 8088
+
+database:
+  enabled: true
+  type: postgresql
+  postgresqlUsername: superset
+  postgresqlPassword: superset
+  postgresqlDatabase: superset
+
+image:
+  repository: library/superset
+  tag: v1.0
+#  pullPolicy: IfNotPresent
+
+initImage:
+  repository: library/superset
+  tag: v1.0
+
+postgresql:
+  enabled: true
+  image:
+    repository: bitnami/postgresql
+    tag: latest
+    pullPolicy: IfNotPresent
+
+redis:
+  enabled: true
+  image:
+    repository: bitnami/redis
+    tag: latest
+    pullPolicy: IfNotPresent
+
+superset:
+  adminUser:
+    username: admin
+    password: password
+    email: phamviethoa2416@gmail.com
+  
+extraEnv:
+  - name: SUPERSET_LOAD_EXAMPLES
+    value: "no"
+
+configOverrides:
+  secret: |
+    SECRET_KEY = "aPrVUnuR4zDuMOiToUWmlIjAxoRZ/beFHqz068ZjI4EROyYEvTo3CRTw"
