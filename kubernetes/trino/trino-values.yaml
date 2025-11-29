@@ -1,0 +1,77 @@
+coordinator:
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  jvm:
+    maxHeapSize: "2G"
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  jvm:
+    maxHeapSize: "2G"
+
+config:
+  query.max-memory-per-node: "1GB"
+  memory.heap-headroom-per-node: "512MB"
+
+additionalCatalogs:
+  minio: |
+    connector.name=iceberg
+    hive.metastore.uri=s3://catalog/warehouse
+    fs.native-s3.enabled=true
+    s3.endpoint=https://minio.minio.svc.cluster.local:443
+    s3.region=${ENV:AWS_REGION}
+    s3.path-style-access=true
+    s3.aws-access-key=${ENV:MINIO_ACCESS_KEY}
+    s3.aws-secret-key=${ENV:MINIO_SECRET_KEY}
+    
+additionalConfigFiles:
+  core-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <configuration>
+        <property>
+            <name>fs.s3a.access.key</name>
+            <value>${ENV:MINIO_ACCESS_KEY}</value>
+        </property>
+        <property>
+            <name>fs.s3a.secret.key</name>
+            <value>${ENV:MINIO_SECRET_KEY}</value>
+        </property>
+        <property>
+            <name>fs.s3a.endpoint</name>
+            <value>https://minio.minio.svc.cluster.local:443</value>
+        </property>
+        <property>
+            <name>fs.s3a.path.style.access</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>fs.s3a.connection.ssl.enabled</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>fs.s3a.impl</name>
+            <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+        </property>
+    </configuration>
+
+env:
+  - name: MINIO_ACCESS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: trino-secret
+        key: access-key
+
+  - name: MINIO_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: trino-secret
+        key: secret-key
+
+  - name: AWS_REGION
+    value: us-east-1
