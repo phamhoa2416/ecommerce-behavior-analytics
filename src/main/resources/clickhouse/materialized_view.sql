@@ -1,7 +1,3 @@
--- ===========================================
---      MATERIALIZED VIEWS (Aggregations)
--- ===========================================
-
 -- Hourly event count and revenue by event type
 CREATE
 MATERIALIZED VIEW mv_hourly_events
