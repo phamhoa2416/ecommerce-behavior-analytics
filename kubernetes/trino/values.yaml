@@ -22,9 +22,9 @@ config:
 additionalCatalogs:
   minio: |
     connector.name=iceberg
-    hive.metastore.uri=s3://catalog/warehouse
+    hive.metastore.uri=thrift://starburst-hms.hive-metastore.svc.cluster.local:9083
     fs.native-s3.enabled=true
-    s3.endpoint=https://minio.minio.svc.cluster.local:443
+    s3.endpoint=http://minio-hl.minio.svc.cluster.local:9000
     s3.region=${ENV:AWS_REGION}
     s3.path-style-access=true
     s3.aws-access-key=${ENV:MINIO_ACCESS_KEY}
@@ -44,7 +44,7 @@ additionalConfigFiles:
         </property>
         <property>
             <name>fs.s3a.endpoint</name>
-            <value>https://minio.minio.svc.cluster.local:443</value>
+            <value>http://minio-hl.minio.svc.cluster.local:9000</value>
         </property>
         <property>
             <name>fs.s3a.path.style.access</name>
