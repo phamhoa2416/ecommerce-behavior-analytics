@@ -1,0 +1,38 @@
+image:
+  repository: bitnami/postgresql
+  tag: latest
+  pullPolicy: IfNotPresent
+
+
+auth:
+  enablePostgresUser: true
+
+  username: hms-user
+  password: hms-password
+  database: metastore
+
+primary:
+  persistence:
+    enabled: true
+    size: 8Gi
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+tls:
+  enabled: false
+
+volumePermissions:
+  enabled: true
+
+metrics:
+  enabled: false
+
+service:
+  type: ClusterIP
+  port: 5432
