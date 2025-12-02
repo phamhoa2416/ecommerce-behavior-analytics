@@ -43,6 +43,13 @@ object AppConfig {
     timezone: String
   )
 
+  final case class ApplicationConfig(
+    kafka: KafkaSettings,
+    minio: MinioSettings,
+    clickhouse: ClickhouseSettings,
+    spark: SparkSettings
+  )
+
   val envStats: String = sys.env.getOrElse("ENV_JOB_RUN", "env")
   logger.info(s"Loading configuration for environment: $envStats")
 
@@ -143,4 +150,8 @@ object AppConfig {
   val SPARK_SHUFFLE_PARTITIONS: Int = sparkSettings.shufflePartitions
   val SPARK_TIMESTAMP_PATTERN: String = sparkSettings.timestampPattern
   val SPARK_TIMEZONE: String = sparkSettings.timezone
+
+  /** Convenience accessor that returns the full configuration as a single value. */
+  val applicationConfig: ApplicationConfig =
+    ApplicationConfig(kafkaSettings, minioSettings, clickhouseSettings, sparkSettings)
 }
