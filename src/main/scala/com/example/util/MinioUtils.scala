@@ -3,17 +3,22 @@ package com.example.util
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
-import com.example.AppConfig
 import org.apache.hadoop.fs.s3a.S3AFileSystem
 import org.apache.spark.sql.SparkSession
 import org.slf4j.LoggerFactory
 
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Try}
 
-object Utils {
+object MinioUtils {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  def configureMinIO(spark: SparkSession, endpoint: String, accessKey: String, secretKey: String, pathStyleAccess: String): Unit = {
+  def configureMinIO(
+                      spark: SparkSession,
+                      endpoint: String,
+                      accessKey: String,
+                      secretKey: String,
+                      pathStyleAccess: String
+                    ): Unit = {
     val hadoopConf = spark.sparkContext.hadoopConfiguration
 
     hadoopConf.set("fs.s3a.endpoint", endpoint)
@@ -52,15 +57,5 @@ object Utils {
       logger.error(s"Failed to verify bucket '$bucket' on $endpoint", e)
       Failure(e)
     }
-  }
-
-  def createSparkSession(appName: String): SparkSession = {
-    val spark = SparkSession.builder()
-      .appName(appName)
-      .master(AppConfig.SPARK_MASTER)
-      .getOrCreate()
-
-    spark.conf.set("spark.sql.shuffle.partitions", AppConfig.SPARK_SHUFFLE_PARTITIONS)
-    spark
   }
 }
