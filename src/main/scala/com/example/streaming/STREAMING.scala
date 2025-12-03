@@ -2,8 +2,8 @@ package com.example.streaming
 
 import com.example.AppConfig
 import com.example.parser.Parser
-import com.example.schema.Schema
-import com.example.util.Utils
+import com.example.schema.{EcommerceEvent, Schema}
+import com.example.util.SparkUtils
 import org.apache.spark.sql.{Dataset, Row}
 import org.apache.spark.sql.streaming.StreamingQuery
 import org.slf4j.LoggerFactory
@@ -25,7 +25,7 @@ object STREAMING {
 
 
   def main(args: Array[String]): Unit = {
-    val spark = Utils.createSparkSession("Streaming")
+    val spark = SparkUtils.createSparkSession("Streaming")
 
     val kafkaDf = spark.readStream
       .format("kafka")
@@ -54,7 +54,7 @@ object STREAMING {
     val query: StreamingQuery = parsedStream.writeStream
       .outputMode("append")
       .option("checkpointLocation", checkpointLocation)
-      .foreachBatch { (batchDF: Dataset[Row], _: Long) =>
+      .foreachBatch { (batchDF: Dataset[EcommerceEvent], _: Long) =>
         if (!batchDF.isEmpty) {
           logger.info(s"Writing batch of ${batchDF.count()} records to ClickHouse table $clickhouseTable")
           batchDF.write
