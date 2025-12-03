@@ -20,13 +20,14 @@ database:
   postgresqlDatabase: superset
 
 image:
-  repository: library/superset
+  repository: phamviethoa2416/superset-clickhouse
   tag: v1.0
-#  pullPolicy: IfNotPresent
+  pullPolicy: IfNotPresent
 
 initImage:
-  repository: library/superset
+  repository: phamviethoa2416/superset-clickhouse
   tag: v1.0
+  pullPolicy: IfNotPresent
 
 postgresql:
   enabled: true
