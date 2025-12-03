@@ -6,7 +6,7 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "docker.io/library/spark-job:v1.0"
+  image: "docker.io/library/spark:v3.1"
   sparkVersion: "3.5.1"
   mainClass: "com.example.streaming.STREAMING"
   mainApplicationFile: "local:///opt/spark/jars/app.jar"
