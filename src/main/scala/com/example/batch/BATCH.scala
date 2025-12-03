@@ -3,7 +3,7 @@ package com.example.batch
 import com.example.AppConfig
 import com.example.parser.Parser
 import com.example.schema.Schema
-import com.example.util.Utils
+import com.example.util.{MinioUtils, SparkUtils}
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions.{col, dayofmonth, month, year}
 import org.slf4j.LoggerFactory
@@ -15,12 +15,11 @@ object BATCH {
   private val logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
-    val spark = Utils.createSparkSession("Batch")
-
+    val spark = SparkUtils.createSparkSession("Batch")
     val kafkaOptions = Map(
       "kafka.bootstrap.servers" -> AppConfig.KAFKA_BOOTSTRAP_SERVERS,
       "subscribe" -> AppConfig.KAFKA_BATCH_TOPIC,
-      "startingOffsets" -> AppConfig.KAFKA_STARTING_OFFSETS,
+      "startingOffsets" -> "earliest",
       "kafka.group.id" -> AppConfig.KAFKA_GROUP_ID
     )
 
@@ -31,8 +30,8 @@ object BATCH {
     val minioPathStyleAccess = AppConfig.MINIO_PATH_STYLE_ACCESS
 
     try {
-      Utils.configureMinIO(spark, minioEndpoint, minioAccessKey, minioSecretKey, minioPathStyleAccess)
-      Utils.checkBucketExists(minioEndpoint, minioAccessKey, minioSecretKey, minioBucketName) match {
+      MinioUtils.configureMinIO(spark, minioEndpoint, minioAccessKey, minioSecretKey, minioPathStyleAccess)
+      MinioUtils.checkBucketExists(minioEndpoint, minioAccessKey, minioSecretKey, minioBucketName) match {
         case Success(_) => logger.info(s"MinIO bucket '$minioBucketName' is ready.")
         case Failure(exception) =>
           logger.error(s"Error while checking/creating MinIO bucket '$minioBucketName'", exception)
@@ -44,31 +43,35 @@ object BATCH {
         .options(kafkaOptions)
         .load()
 
-      logger.info(s"Reading from Kafka topic: ${AppConfig.KAFKA_BATCH_TOPIC}")
+      logger.info(s"Reading CDC events from Kafka topic (source: PostgreSQL): ${AppConfig.KAFKA_BATCH_TOPIC}")
 
-      val parsedDF = Parser.parseData(
+      val parsedEvents = Parser.parseToEcommerceEvents(
         kafkaDf,
         Schema.schema,
         AppConfig.SPARK_TIMESTAMP_PATTERN,
         AppConfig.SPARK_TIMEZONE
       )
 
-      val dataWithPartition = parsedDF
+      val dataWithPartition = parsedEvents.toDF()
         .withColumn("year", year(col("event_time")))
         .withColumn("month", month(col("event_time")))
         .withColumn("day", dayofmonth(col("event_time")))
 
-      logger.info(s"Parsed record count: ${dataWithPartition.count()}")
+      logger.info(s"Parsed CDC record count in this batch: ${dataWithPartition.count()}")
 
-      val minioPath = s"s3a://$minioBucketName/ecommerce_events/"
+      // Raw zone: append-only to preserve full history of all CDC events
+      // Each CDC event (INSERT/UPDATE/DELETE) is stored as a separate record
+      // This allows downstream processing to reconstruct state at any point in time
+      val deltaPath = s"s3a://$minioBucketName/ecommerce_events"
+      logger.info(s"Appending raw CDC data to Delta Lake (raw zone) on MinIO: $deltaPath")
 
-      logger.info(s"Writing data to MinIO: $minioPath")
       dataWithPartition
         .repartition(col("year"), col("month"), col("day"))
         .write
+        .format("delta")
         .mode(SaveMode.Append)
         .partitionBy("year", "month", "day")
-        .parquet(minioPath)
+        .save(deltaPath)
 
       logger.info("Batch job completed successfully!")
     } catch {
