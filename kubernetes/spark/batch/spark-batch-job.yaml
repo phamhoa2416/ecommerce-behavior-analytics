@@ -6,22 +6,10 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "docker.io/library/spark-app:v1.1"
+  image: "docker.io/library/spark:v3.1"
   sparkVersion: "3.5.1"
   mainClass: "com.example.batch.BATCH"
   mainApplicationFile: "local:///opt/spark/jars/app.jar"
-
-  sparkConf:
-    spark.kafka.bootstrap.servers: "kafka-cluster-kafka-bootstrap.kafka:9092"
-
-    spark.hadoop.fs.s3a.endpoint: "http://minio-hl.minio:9000"
-    spark.hadoop.fs.s3a.access.key: "admin"
-    spark.hadoop.fs.s3a.secret.key: "password"
-    spark.hadoop.fs.s3a.path.style.access: "true"
-    spark.hadoop.fs.s3a.connection.ssl.enabled: "false"
-
-    spark.driver.extraClassPath: "/opt/spark/jars/*"
-    spark.executor.extraClassPath: "/opt/spark/jars/*"
 
   driver:
 
