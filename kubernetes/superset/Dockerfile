@@ -15,11 +15,12 @@ ENV DOCKERIZE_VERSION=v0.6.1
 RUN curl -L https://github.com/jwilder/dockerize/releases/download/${DOCKERIZE_VERSION}/dockerize-linux-amd64-${DOCKERIZE_VERSION}.tar.gz \
     | tar -C /usr/local/bin -xz
 
-RUN . /app/.venv/bin/activate && \
-    uv pip install \
+RUN uv pip install \
     clickhouse-connect>=0.6.8 \
     SQLAlchemy==1.4.46 \
     trino \
     psycopg2-binary
 
 USER superset
+
+CMD ["/app/docker/entrypoints/run-server.sh"]
