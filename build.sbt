@@ -12,6 +12,7 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-sql" % "3.5.1",
       "org.apache.spark" %% "spark-streaming" % "3.5.1",
       "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.1",
+      "org.apache.spark" %% "spark-mllib" % "3.5.1",
       "io.delta" %% "delta-spark" % "3.2.0",
 
       "org.apache.hadoop" % "hadoop-aws" % "3.3.4",
