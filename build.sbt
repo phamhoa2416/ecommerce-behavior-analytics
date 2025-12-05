@@ -24,8 +24,8 @@ lazy val root = (project in file("."))
       "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.1"
     ),
 
-    assembly / mainClass := Some("com.example.batch.BATCH"),
-    assembly / mainClass := Some("com.example.streaming.STREAMING"),
+    assembly / mainClass := Some("com.example.main.BATCH"),
+    assembly / mainClass := Some("com.example.main.STREAMING"),
     assembly / assemblyJarName := "ecommerce-batch-assembly.jar",
     assembly / test := {},
     assembly / assemblyMergeStrategy := {
