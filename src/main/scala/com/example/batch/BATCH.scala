@@ -45,33 +45,35 @@ object BATCH {
 
       logger.info(s"Reading CDC events from Kafka topic (source: PostgreSQL): ${AppConfig.KAFKA_BATCH_TOPIC}")
 
-      val parsedEvents = Parser.parseToEcommerceEvents(
+      val parsedDf = Parser.parse(
         kafkaDf,
         Schema.schema,
         AppConfig.SPARK_TIMESTAMP_PATTERN,
         AppConfig.SPARK_TIMEZONE
       )
 
-      val dataWithPartition = parsedEvents.toDF()
+      val dfWithPartition = parsedDf
         .withColumn("year", year(col("event_time")))
         .withColumn("month", month(col("event_time")))
         .withColumn("day", dayofmonth(col("event_time")))
 
-      logger.info(s"Parsed CDC record count in this batch: ${dataWithPartition.count()}")
+      logger.info(s"Parsed CDC record count in this batch: ${dfWithPartition.count()}")
 
-      // Raw zone: append-only to preserve full history of all CDC events
-      // Each CDC event (INSERT/UPDATE/DELETE) is stored as a separate record
-      // This allows downstream processing to reconstruct state at any point in time
-      val deltaPath = s"s3a://$minioBucketName/ecommerce_events"
-      logger.info(s"Appending raw CDC data to Delta Lake (raw zone) on MinIO: $deltaPath")
 
-      dataWithPartition
-        .repartition(col("year"), col("month"), col("day"))
-        .write
-        .format("delta")
-        .mode(SaveMode.Append)
-        .partitionBy("year", "month", "day")
-        .save(deltaPath)
+      val minioPath = AppConfig.MINIO_BASE_PATH
+      val minioFormat = AppConfig.MINIO_FILE_FORMAT
+      
+      logger.info(s"Appending raw CDC data to MinIO (raw zone): $minioPath (format: $minioFormat)")
+
+      MinioUtils.writeDeltaTable(
+        df = dfWithPartition,
+        bucketName = minioBucketName,
+        path = minioPath,
+        format = minioFormat,
+        saveMode = SaveMode.Append,
+        partitionColumns = Some(Seq("year", "month", "day")),
+        repartitionColumns = Some(Seq("year", "month", "day"))
+      )
 
       logger.info("Batch job completed successfully!")
     } catch {
