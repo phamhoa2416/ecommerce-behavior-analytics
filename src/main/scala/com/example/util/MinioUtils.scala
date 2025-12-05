@@ -70,15 +70,14 @@ object MinioUtils {
                       spark: SparkSession,
                       bucketName: String,
                       path: String,
-                      format: String = "delta"
                     ): DataFrame = {
     validate(bucketName, path)
     val fullPath = s"s3a://$bucketName/$path"
-    logger.info(s"Reading data from MinIO: $fullPath (format: $format)")
+    logger.info(s"Reading data from MinIO: $fullPath (format: delta)")
 
     try {
       val df = spark.read
-        .format(format)
+        .format("delta")
         .load(fullPath)
 
       logger.info(s"Successfully read data from MinIO.")
@@ -132,7 +131,6 @@ object MinioUtils {
                        df: DataFrame,
                        bucketName: String,
                        path: String,
-                       format: String = "delta",
                        saveMode: SaveMode = SaveMode.Append,
                        partitionColumns: Option[Seq[String]] = None,
                        repartitionColumns: Option[Seq[String]] = None,
@@ -141,7 +139,7 @@ object MinioUtils {
     validate(bucketName, path)
 
     val fullPath = s"s3a://$bucketName/$path"
-    logger.info(s"Writing data to MinIO: $fullPath (format: $format, mode: $saveMode)")
+    logger.info(s"Writing data to MinIO: $fullPath (format: delta, mode: $saveMode)")
 
     try {
       var payload = df
@@ -154,7 +152,7 @@ object MinioUtils {
       }
 
       var writer = payload.write
-        .format(format)
+        .format("delta")
         .mode(saveMode)
 
       partitionColumns match {
