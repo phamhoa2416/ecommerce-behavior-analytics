@@ -59,13 +59,16 @@ dags:
 
 extraVolumes:
   - name: dags-local
-    hostPath:
-      path: /mnt/dags
-      type: Directory
+    configMap:
+      name: airflow-dag
+    # hostPath:
+    #   path: /mnt/dags
+    #   type: Directory
 
 extraVolumeMounts:
   - name: dags-local
-    mountPath: /opt/airflow/dags
+    mountPath: /mnt/dags
+    #mountPath: /opt/airflow/dags
     readOnly: true
 
 serviceAccount:
