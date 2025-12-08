@@ -40,7 +40,8 @@ object AppConfig {
     master: String,
     shufflePartitions: Int,
     timestampPattern: String,
-    timezone: String
+    timezone: String,
+    watermarkDuration: String
   )
 
   final case class ApplicationConfig(
@@ -120,7 +121,9 @@ object AppConfig {
     master = envOrConfig("SPARK_MASTER", sparkConfig.getString("master")),
     shufflePartitions = envOrConfigInt("SPARK_SHUFFLE_PARTITIONS", sparkConfig.getInt("shuffle_partitions")),
     timestampPattern = envOrConfig("SPARK_TIMESTAMP_PATTERN", sparkConfig.getString("timestamp_pattern")),
-    timezone = envOrConfig("SPARK_TIMEZONE", sparkConfig.getString("timezone"))
+    timezone = envOrConfig("SPARK_TIMEZONE", sparkConfig.getString("timezone")),
+    watermarkDuration = envOrConfig("SPARK_WATERMARK_DURATION",
+      Try(sparkConfig.getString("watermark_duration")).getOrElse("5 minutes"))
   )
 
   // Backwards compatible fields
@@ -150,6 +153,7 @@ object AppConfig {
   val SPARK_SHUFFLE_PARTITIONS: Int = sparkSettings.shufflePartitions
   val SPARK_TIMESTAMP_PATTERN: String = sparkSettings.timestampPattern
   val SPARK_TIMEZONE: String = sparkSettings.timezone
+  val SPARK_WATERMARK_DURATION: String = sparkSettings.watermarkDuration
 
   /** Convenience accessor that returns the full configuration as a single value. */
   val applicationConfig: ApplicationConfig =

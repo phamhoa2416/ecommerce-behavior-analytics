@@ -21,9 +21,8 @@ object Parser {
 
     try {
       df.select(
-        from_json(col("value").cast("string"), schema).alias("data"),
-        col("timestamp").alias("kafka_timestamp"))
-        .select("data.*", "kafka_timestamp")
+        from_json(col("value").cast("string"), schema).alias("data"))
+        .select("data.*")
         .withColumn("product_id", col("product_id").cast("long"))
         .withColumn("category_id", col("category_id").cast("long"))
         .withColumn("price", col("price").cast("double"))
