@@ -56,7 +56,7 @@ object QualityThreshold {
       )
     } else {
       val message =
-        if (validRecordRate < config.maxInvalidRecordRate) {
+        if (validRecordRate < config.minValidRecordRate) {
           f"Data quality threshold BREACHED: ${validRecordRate * 100}%.2f%% valid records " +
             f"(threshold: ${config.minValidRecordRate * 100}%.2f%%)"
         } else {
@@ -85,11 +85,11 @@ object QualityThreshold {
         logger.error(s"[Quality Threshold] ALERT: ${result.message}")
         logger.error(s"[Quality Threshold] Total records: ${result.validRecordRate}")
       } else {
-        logger.warn(s"s[Quality Threshold] ${result.message}")
+        logger.warn(s"[Quality Threshold] ${result.message}")
       }
 
       if (result.shouldPause) {
-        logger.error(s"[Quality Threshold] Pipeline should be passed due to quality threshold breach")
+        logger.error(s"[Quality Threshold] Pipeline should be paused due to quality threshold breach")
       }
     }
   }

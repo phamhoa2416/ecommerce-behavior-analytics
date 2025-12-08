@@ -124,7 +124,7 @@ object STREAMING {
           }
 
           // Save invalid records asynchronously (non-blocking)
-          if (!validationResult.invalidRecords.isEmpty) {
+          if (validationResult.metrics.invalidRecords > 0) {
             DLQHandler.writeToDLQ(
               records = validationResult.invalidRecords,
               path = invalidPath,

@@ -60,7 +60,7 @@ object DLQHandler {
         return Failure(new RuntimeException("DLQ queue is full"))
       }
 
-      logger.info(s"Enqueued ${records.count()} records to DLQ queue (batch_id = $batchId, reason = $reason")
+      logger.info(s"Enqueued ${records.count()} records to DLQ queue (batch_id = $batchId, reason = $reason)")
       Success(())
     } catch {
       case ex: InterruptedException =>

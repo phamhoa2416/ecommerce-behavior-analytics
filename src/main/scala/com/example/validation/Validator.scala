@@ -115,7 +115,8 @@ object Validator {
                           format: String = "delta",
                           autoOptimize: Boolean = false
                         ): Unit = {
-    if (invalidRecords.isEmpty) {
+    val invalidCount = invalidRecords.count()
+    if (invalidCount == 0) {
       logger.info("No invalid records to save.")
       return
     }

@@ -96,11 +96,11 @@ object AppConfig {
 
   val minioSettings: MinioSettings = MinioSettings(
     endpoint = envOrConfig("MINIO_ENDPOINT", minioConfig.getString("endpoint")),
-    accessKey = envOrConfig("MINIO_ROOT_USER",
-      sys.env.getOrElse("MINIO_ACCESS_KEY", minioConfig.getString("access_key"))
+    accessKey = envOrConfig("MINIO_ACCESS_KEY",
+      sys.env.getOrElse("MINIO_ROOT_USER", minioConfig.getString("access_key"))
     ),
-    secretKey = envOrConfig("MINIO_ROOT_PASSWORD",
-      sys.env.getOrElse("MINIO_SECRET_KEY", minioConfig.getString("secret_key"))
+    secretKey = envOrConfig("MINIO_SECRET_KEY",
+      sys.env.getOrElse("MINIO_ROOT_PASSWORD", minioConfig.getString("secret_key"))
     ),
     bucketName = envOrConfig("MINIO_BUCKET_NAME", minioConfig.getString("bucket_name")),
     basePath = envOrConfig("MINIO_BASE_PATH", minioConfig.getString("base_path")),

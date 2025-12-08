@@ -123,7 +123,7 @@ object BATCH {
         sys.exit(1)
       }
 
-      if (!validationResult.invalidRecords.isEmpty) {
+      if (validationResult.metrics.invalidRecords > 0) {
         DLQHandler.writeToDLQ(
           records = validationResult.invalidRecords,
           path = invalidPath,
