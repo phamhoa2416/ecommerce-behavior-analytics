@@ -1,5 +1,6 @@
 package com.example.validation
 
+import com.example.AppConfig
 import com.example.util.MinioUtils
 import com.example.validation.model.{DQMetrics, Result}
 import org.apache.spark.sql.functions._
@@ -9,9 +10,9 @@ import org.slf4j.LoggerFactory
 object Validator {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  private val MIN_PRICE = 0.01
-  private val MAX_PRICE = 1000000.0
-  private val VALID_EVENT_TYPES = Set("view", "cart", "purchase", "remove_from_cart")
+  private def minPrice: Double = AppConfig.applicationConfig.validation.minPrice
+  private def maxPrice: Double = AppConfig.applicationConfig.validation.maxPrice
+  private def validEventTypes: Set[String] = AppConfig.applicationConfig.validation.validEventTypes.toSet
 
   def validateAndClean(df: DataFrame): Result = {
     import df.sparkSession.implicits._
@@ -19,8 +20,8 @@ object Validator {
     logger.info(s"Total records to validate: ${df.count()}")
 
     val validated = df
-      .withColumn("is_valid_price", col("price").isNotNull && col("price") >= MIN_PRICE && col("price") <= MAX_PRICE)
-      .withColumn("is_valid_event_type", col("event_type").isNotNull && col("event_type").isin(VALID_EVENT_TYPES.toSeq: _*))
+      .withColumn("is_valid_price", col("price").isNotNull && col("price") >= minPrice && col("price") <= maxPrice)
+      .withColumn("is_valid_event_type", col("event_type").isNotNull && col("event_type").isin(validEventTypes.toSeq: _*))
       .withColumn("is_valid_product_id", col("product_id").isNotNull && col("product_id") > 0)
       .withColumn("is_valid_user_id", col("user_id").isNotNull && col("user_id") > 0)
       .withColumn("is_valid_event_time", col("event_time").isNotNull)

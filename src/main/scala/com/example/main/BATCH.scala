@@ -28,10 +28,10 @@ object BATCH {
     val minioPathStyleAccess = AppConfig.MINIO_PATH_STYLE_ACCESS
 
     val rawPath = AppConfig.MINIO_BASE_PATH
-    val invalidPath = s"${AppConfig.MINIO_BASE_PATH}/batch/invalid"
-    val dlqPath = s"${AppConfig.MINIO_BASE_PATH}/batch/dlq"
-    val lineagePath = s"${AppConfig.MINIO_BASE_PATH}/lineage"
-    val offsetPath = s"${AppConfig.MINIO_BASE_PATH}/batch/offsets"
+    val invalidPath = AppConfig.PIPELINE_BATCH_INVALID_PATH
+    val dlqPath = AppConfig.PIPELINE_BATCH_DLQ_PATH
+    val lineagePath = AppConfig.PIPELINE_BATCH_LINEAGE_PATH
+    val offsetPath = AppConfig.PIPELINE_BATCH_OFFSET_PATH
 
     val batchId = System.currentTimeMillis().toString
     val topic = AppConfig.KAFKA_BATCH_TOPIC
@@ -144,10 +144,7 @@ object BATCH {
         .withColumn(
           "event_key",
           concat_ws("|",
-            col("event_time").cast("string"),
-            col("user_id").cast("string"),
-            col("product_id").cast("string"),
-            col("event_type")
+            AppConfig.applicationConfig.pipeline.dedupKeyColumns.map(c => col(c)): _*
           )
         )
 

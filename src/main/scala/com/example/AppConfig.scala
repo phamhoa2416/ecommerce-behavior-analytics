@@ -3,6 +3,7 @@ package com.example
 import com.typesafe.config.{Config, ConfigFactory}
 import org.slf4j.LoggerFactory
 
+import scala.collection.JavaConverters._
 import scala.util.Try
 
 object AppConfig {
@@ -24,7 +25,11 @@ object AppConfig {
     bucketName: String,
     basePath: String,
     fileFormat: String,
-    pathStyleAccess: String
+    pathStyleAccess: String,
+    connectionMaximum: Int = 15,
+    attemptsMaximum: Int = 3,
+    awsRegion: String = "us-east-1",
+    vacuumRetentionHours: Int = 168
   )
 
   final case class ClickhouseSettings(
@@ -33,7 +38,10 @@ object AppConfig {
     password: String,
     database: String,
     table: String,
-    batchSize: Int
+    batchSize: Int,
+    maxConnections: Int = 10,
+    connectionTimeoutMs: Int = 30000,
+    socketTimeoutMs: Int = 30000
   )
 
   final case class SparkSettings(
@@ -44,14 +52,50 @@ object AppConfig {
     watermarkDuration: String
   )
 
+  final case class PipelineSettings(
+    batchInvalidPath: String = "batch/invalid",
+    batchDlqPath: String = "batch/dlq",
+    batchLineagePath: String = "lineage",
+    batchOffsetPath: String = "batch/offsets",
+    streamingInvalidPath: String = "streaming/invalid",
+    streamingDlqPath: String = "streaming/dlq",
+    streamingLineagePath: String = "streaming/lineage",
+    streamingDedupPath: String = "streaming/deduplication",
+    dlqShutdownWaitSeconds: Int = 5,
+    dedupPersistenceInterval: Int = 10,
+    dedupKeyColumns: Seq[String] = Seq("event_time", "user_id", "product_id", "event_type")
+  )
+
+  final case class ValidationSettings(
+    minPrice: Double = 0.01,
+    maxPrice: Double = 1000000.0,
+    validEventTypes: Seq[String] = Seq("view", "cart", "purchase", "remove_from_cart")
+  )
+
+  final case class DeduplicationSettings(
+    maxCacheSize: Int = 1000000,
+    loadHistoryHours: Int = 24,
+    evictionBuffer: Int = 1000
+  )
+
+  final case class DLQSettings(
+    queueSize: Int = 10000,
+    offerTimeoutSeconds: Int = 5,
+    pollTimeoutSeconds: Int = 1
+  )
+
   final case class ApplicationConfig(
     kafka: KafkaSettings,
     minio: MinioSettings,
     clickhouse: ClickhouseSettings,
-    spark: SparkSettings
+    spark: SparkSettings,
+    pipeline: PipelineSettings = PipelineSettings(),
+    validation: ValidationSettings = ValidationSettings(),
+    deduplication: DeduplicationSettings = DeduplicationSettings(),
+    dlq: DLQSettings = DLQSettings()
   )
 
-  val envStats: String = sys.env.getOrElse("ENV_JOB_RUN", "env")
+  private val envStats: String = sys.env.getOrElse("ENV_JOB_RUN", "env")
   logger.info(s"Loading configuration for environment: $envStats")
 
   val config: Config = {
@@ -67,6 +111,11 @@ object AppConfig {
   private val minioConfig = config.getConfig("minio")
   private val clickhouseConfig = config.getConfig("clickhouse")
   private val sparkConfig = config.getConfig("spark")
+
+  private val pipelineConfig = Try(config.getConfig("pipeline")).getOrElse(ConfigFactory.empty())
+  private val validationConfig = Try(config.getConfig("validation")).getOrElse(ConfigFactory.empty())
+  private val deduplicationConfig = Try(config.getConfig("deduplication")).getOrElse(ConfigFactory.empty())
+  private val dlqConfig = Try(config.getConfig("dlq")).getOrElse(ConfigFactory.empty())
 
   private def requireNonEmpty(value: String, key: String): String = {
     if (value == null || value.trim.isEmpty) {
@@ -85,7 +134,17 @@ object AppConfig {
       .getOrElse(defaultValue)
   }
 
-  val kafkaSettings: KafkaSettings = KafkaSettings(
+  private def envOrConfigDouble(envKey: String, defaultValue: => Double): Double = {
+    sys.env.get(envKey).flatMap(v => Try(v.toDouble).toOption)
+      .getOrElse(defaultValue)
+  }
+
+  private def envOrConfigSeq(envKey: String, defaultValue: => Seq[String]): Seq[String] = {
+    sys.env.get(envKey).map(_.split(",").map(_.trim).toSeq)
+      .getOrElse(defaultValue)
+  }
+
+  private val kafkaSettings: KafkaSettings = KafkaSettings(
     bootstrapServers = envOrConfig("KAFKA_BOOTSTRAP_SERVERS", kafkaConfig.getString("bootstrap_servers")),
     batchTopic = envOrConfig("KAFKA_TOPIC", kafkaConfig.getString("batch_topic")),
     streamTopic = envOrConfig("KAFKA_STREAM_TOPIC", kafkaConfig.getString("stream_topic")),
@@ -105,7 +164,15 @@ object AppConfig {
     bucketName = envOrConfig("MINIO_BUCKET_NAME", minioConfig.getString("bucket_name")),
     basePath = envOrConfig("MINIO_BASE_PATH", minioConfig.getString("base_path")),
     fileFormat = envOrConfig("MINIO_FILE_FORMAT", minioConfig.getString("file_format")),
-    pathStyleAccess = envOrConfig("MINIO_PATH_STYLE_ACCESS", minioConfig.getString("path_style_access"))
+    pathStyleAccess = envOrConfig("MINIO_PATH_STYLE_ACCESS", minioConfig.getString("path_style_access")),
+    connectionMaximum = envOrConfigInt("MINIO_CONNECTION_MAXIMUM",
+      Try(minioConfig.getInt("connection_maximum")).getOrElse(15)),
+    attemptsMaximum = envOrConfigInt("MINIO_ATTEMPTS_MAXIMUM",
+      Try(minioConfig.getInt("attempts_maximum")).getOrElse(3)),
+    awsRegion = envOrConfig("MINIO_AWS_REGION",
+      Try(minioConfig.getString("aws_region")).getOrElse("us-east-1")),
+    vacuumRetentionHours = envOrConfigInt("MINIO_VACUUM_RETENTION_HOURS",
+      Try(minioConfig.getInt("vacuum_retention_hours")).getOrElse(168))
   )
 
   val clickhouseSettings: ClickhouseSettings = ClickhouseSettings(
@@ -114,10 +181,16 @@ object AppConfig {
     password = envOrConfig("CLICKHOUSE_PASSWORD", clickhouseConfig.getString("password")),
     database = envOrConfig("CLICKHOUSE_DATABASE", clickhouseConfig.getString("database")),
     table = envOrConfig("CLICKHOUSE_TABLE", clickhouseConfig.getString("table")),
-    batchSize = envOrConfigInt("CLICKHOUSE_BATCH_SIZE", clickhouseConfig.getInt("batch_size"))
+    batchSize = envOrConfigInt("CLICKHOUSE_BATCH_SIZE", clickhouseConfig.getInt("batch_size")),
+    maxConnections = envOrConfigInt("CLICKHOUSE_MAX_CONNECTIONS",
+      Try(clickhouseConfig.getInt("max_connections")).getOrElse(10)),
+    connectionTimeoutMs = envOrConfigInt("CLICKHOUSE_CONNECTION_TIMEOUT_MS",
+      Try(clickhouseConfig.getInt("connection_timeout_ms")).getOrElse(30000)),
+    socketTimeoutMs = envOrConfigInt("CLICKHOUSE_SOCKET_TIMEOUT_MS",
+      Try(clickhouseConfig.getInt("socket_timeout_ms")).getOrElse(30000))
   )
 
-  val sparkSettings: SparkSettings = SparkSettings(
+  private val sparkSettings: SparkSettings = SparkSettings(
     master = envOrConfig("SPARK_MASTER", sparkConfig.getString("master")),
     shufflePartitions = envOrConfigInt("SPARK_SHUFFLE_PARTITIONS", sparkConfig.getInt("shuffle_partitions")),
     timestampPattern = envOrConfig("SPARK_TIMESTAMP_PATTERN", sparkConfig.getString("timestamp_pattern")),
@@ -155,7 +228,78 @@ object AppConfig {
   val SPARK_TIMEZONE: String = sparkSettings.timezone
   val SPARK_WATERMARK_DURATION: String = sparkSettings.watermarkDuration
 
+  private val pipelineSettings: PipelineSettings = PipelineSettings(
+    batchInvalidPath = envOrConfig("PIPELINE_BATCH_INVALID_PATH",
+      Try(pipelineConfig.getString("batch_invalid_path")).getOrElse("batch/invalid")),
+    batchDlqPath = envOrConfig("PIPELINE_BATCH_DLQ_PATH",
+      Try(pipelineConfig.getString("batch_dlq_path")).getOrElse("batch/dlq")),
+    batchLineagePath = envOrConfig("PIPELINE_BATCH_LINEAGE_PATH",
+      Try(pipelineConfig.getString("batch_lineage_path")).getOrElse("lineage")),
+    batchOffsetPath = envOrConfig("PIPELINE_BATCH_OFFSET_PATH",
+      Try(pipelineConfig.getString("batch_offset_path")).getOrElse("batch/offsets")),
+    streamingInvalidPath = envOrConfig("PIPELINE_STREAMING_INVALID_PATH",
+      Try(pipelineConfig.getString("streaming_invalid_path")).getOrElse("streaming/invalid")),
+    streamingDlqPath = envOrConfig("PIPELINE_STREAMING_DLQ_PATH",
+      Try(pipelineConfig.getString("streaming_dlq_path")).getOrElse("streaming/dlq")),
+    streamingLineagePath = envOrConfig("PIPELINE_STREAMING_LINEAGE_PATH",
+      Try(pipelineConfig.getString("streaming_lineage_path")).getOrElse("streaming/lineage")),
+    streamingDedupPath = envOrConfig("PIPELINE_STREAMING_DEDUP_PATH",
+      Try(pipelineConfig.getString("streaming_dedup_path")).getOrElse("streaming/deduplication")),
+    dlqShutdownWaitSeconds = envOrConfigInt("DLQ_SHUTDOWN_WAIT_SECONDS",
+      Try(pipelineConfig.getInt("dlq_shutdown_wait_seconds")).getOrElse(5)),
+    dedupPersistenceInterval = envOrConfigInt("DEDUP_PERSISTENCE_INTERVAL",
+      Try(pipelineConfig.getInt("dedup_persistence_interval")).getOrElse(10)),
+    dedupKeyColumns = envOrConfigSeq("DEDUP_KEY_COLUMNS",
+      Try(pipelineConfig.getStringList("dedup_key_columns").asScala).getOrElse(Seq("event_time", "user_id", "product_id", "event_type")))
+  )
+
+  private val validationSettings: ValidationSettings = ValidationSettings(
+    minPrice = envOrConfigDouble("VALIDATION_MIN_PRICE",
+      Try(validationConfig.getDouble("min_price")).getOrElse(0.01)),
+    maxPrice = envOrConfigDouble("VALIDATION_MAX_PRICE",
+      Try(validationConfig.getDouble("max_price")).getOrElse(1000000.0)),
+    validEventTypes = envOrConfigSeq("VALIDATION_VALID_EVENT_TYPES",
+      Try(validationConfig.getStringList("valid_event_types").asScala).getOrElse(Seq("view", "cart", "purchase", "remove_from_cart")))
+  )
+
+  private val deduplicationSettings: DeduplicationSettings = DeduplicationSettings(
+    maxCacheSize = envOrConfigInt("DEDUP_MAX_CACHE_SIZE",
+      Try(deduplicationConfig.getInt("max_cache_size")).getOrElse(1000000)),
+    loadHistoryHours = envOrConfigInt("DEDUP_LOAD_HISTORY_HOURS",
+      Try(deduplicationConfig.getInt("load_history_hours")).getOrElse(24)),
+    evictionBuffer = envOrConfigInt("DEDUP_EVICTION_BUFFER",
+      Try(deduplicationConfig.getInt("eviction_buffer")).getOrElse(1000))
+  )
+
+  private val dlqSettings: DLQSettings = DLQSettings(
+    queueSize = envOrConfigInt("DLQ_QUEUE_SIZE",
+      Try(dlqConfig.getInt("queue_size")).getOrElse(10000)),
+    offerTimeoutSeconds = envOrConfigInt("DLQ_OFFER_TIMEOUT_SECONDS",
+      Try(dlqConfig.getInt("offer_timeout_seconds")).getOrElse(5)),
+    pollTimeoutSeconds = envOrConfigInt("DLQ_POLL_TIMEOUT_SECONDS",
+      Try(dlqConfig.getInt("poll_timeout_seconds")).getOrElse(1))
+  )
+
+  // Backwards compatible accessors
+  val PIPELINE_BATCH_INVALID_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchInvalidPath}"
+  val PIPELINE_BATCH_DLQ_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchDlqPath}"
+  val PIPELINE_BATCH_LINEAGE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchLineagePath}"
+  val PIPELINE_BATCH_OFFSET_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchOffsetPath}"
+  val PIPELINE_STREAMING_INVALID_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingInvalidPath}"
+  val PIPELINE_STREAMING_DLQ_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingDlqPath}"
+  val PIPELINE_STREAMING_LINEAGE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingLineagePath}"
+  val PIPELINE_STREAMING_DEDUP_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingDedupPath}"
+
   /** Convenience accessor that returns the full configuration as a single value. */
   val applicationConfig: ApplicationConfig =
-    ApplicationConfig(kafkaSettings, minioSettings, clickhouseSettings, sparkSettings)
+    ApplicationConfig(
+      kafkaSettings,
+      minioSettings,
+      clickhouseSettings,
+      sparkSettings,
+      pipelineSettings,
+      validationSettings,
+      deduplicationSettings,
+      dlqSettings
+    )
 }

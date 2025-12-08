@@ -1,6 +1,7 @@
 package com.example.util
 
 import com.clickhouse.jdbc.ClickHouseDataSource
+import com.example.AppConfig
 import org.slf4j.LoggerFactory
 
 import java.sql.Connection
@@ -19,15 +20,15 @@ object ClickHouseUtils {
                 user: String,
                 password: String,
                 batchSize: Int,
-                maxConnections: Int = 10,
-                connectionTimeout: Int = 30000
+                maxConnections: Int = AppConfig.clickhouseSettings.maxConnections,
+                connectionTimeout: Int = AppConfig.clickhouseSettings.connectionTimeoutMs
                 ): Try[Unit] = {
     try {
       val props = new Properties()
       props.put("user", user)
       props.put("password", password)
       props.put("batchsize", batchSize)
-      props.put("socket_timeout", "30000")
+      props.put("socket_timeout", AppConfig.clickhouseSettings.socketTimeoutMs.toString)
       props.put("connect_timeout", connectionTimeout.toString)
 
       val source = new ClickHouseDataSource(url, props)

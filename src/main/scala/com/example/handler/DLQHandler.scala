@@ -1,5 +1,6 @@
 package com.example.handler
 
+import com.example.AppConfig
 import com.example.util.MinioUtils
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
@@ -20,7 +21,7 @@ object DLQHandler {
                               retryCount: Int
                               )
 
-  private val dlqQueue: BlockingQueue[DLQRecord] = new LinkedBlockingQueue[DLQRecord](10000)
+  private var dlqQueue: Option[BlockingQueue[DLQRecord]] = None
   private var processorThread: Option[Thread] = None
   private var isRunning = false
 
@@ -30,6 +31,7 @@ object DLQHandler {
       return
     }
 
+    dlqQueue = Some(new LinkedBlockingQueue[DLQRecord](AppConfig.applicationConfig.dlq.queueSize))
     isRunning = true
     val thread = new Thread(new DLQProcessor(spark), "Async Dead Letter Queue Processor")
     thread.setDaemon(true)
@@ -53,9 +55,14 @@ object DLQHandler {
                 retryCount: Int
                 ): Try[Unit] = {
     try {
+      val queue = dlqQueue.getOrElse {
+        return Failure(new IllegalStateException("DLQ handler not started. Call start() first."))
+      }
+      
       val dlqRecord = DLQRecord(records, path, bucketName, batchId, reason, retryCount)
 
-      if (!dlqQueue.offer(dlqRecord, 5, TimeUnit.SECONDS)) {
+      val offerTimeout = AppConfig.applicationConfig.dlq.offerTimeoutSeconds
+      if (!queue.offer(dlqRecord, offerTimeout, TimeUnit.SECONDS)) {
         logger.error(s"DLQ queue is full! Failed to enqueue records for batch_id = $batchId")
         return Failure(new RuntimeException("DLQ queue is full"))
       }
@@ -72,15 +79,21 @@ object DLQHandler {
     }
   }
 
-  def getQueueSize: Int = dlqQueue.size()
+  def getQueueSize: Int = dlqQueue.map(_.size()).getOrElse(0)
 
   private class DLQProcessor(session: SparkSession) extends Runnable {
     override def run(): Unit = {
       logger.info("DLQ Processor thread started")
 
-      while (isRunning || !dlqQueue.isEmpty) {
+      val queue = dlqQueue.getOrElse {
+        logger.error("DLQ queue not initialized")
+        return
+      }
+      
+      while (isRunning || !queue.isEmpty) {
         try {
-          val dlqRecord = dlqQueue.poll(1, TimeUnit.SECONDS)
+          val pollTimeout = com.example.AppConfig.applicationConfig.dlq.pollTimeoutSeconds
+          val dlqRecord = queue.poll(pollTimeout, TimeUnit.SECONDS)
 
           if (dlqRecord != null) {
             processDLQRecord(dlqRecord)

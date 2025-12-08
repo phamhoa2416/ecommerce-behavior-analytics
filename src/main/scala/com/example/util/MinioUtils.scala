@@ -3,10 +3,11 @@ package com.example.util
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
+import com.example.AppConfig
 import io.delta.tables.DeltaTable
 import org.apache.hadoop.fs.s3a.S3AFileSystem
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{bucket, col}
 import org.slf4j.LoggerFactory
 
 import scala.util.{Failure, Try}
@@ -29,8 +30,8 @@ object MinioUtils {
     hadoopConf.set("fs.s3a.connection.ssl.enabled", "false")
     hadoopConf.set("fs.s3a.path.style.access", pathStyleAccess)
     hadoopConf.set("fs.s3a.impl", classOf[S3AFileSystem].getName)
-    hadoopConf.set("fs.s3a.connection.maximum", "15")
-    hadoopConf.set("fs.s3a.attempts.maximum", "3")
+    hadoopConf.set("fs.s3a.connection.maximum", AppConfig.minioSettings.connectionMaximum.toString)
+    hadoopConf.set("fs.s3a.attempts.maximum", AppConfig.minioSettings.attemptsMaximum.toString)
     hadoopConf.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
   }
 
@@ -42,7 +43,7 @@ object MinioUtils {
                        ): Try[Unit] = {
     Try {
       val credentials = new BasicAWSCredentials(accessKey, secretKey)
-      val endpointConfiguration = new AwsClientBuilder.EndpointConfiguration(endpoint, "us-east-1")
+      val endpointConfiguration = new AwsClientBuilder.EndpointConfiguration(endpoint, AppConfig.minioSettings.awsRegion)
 
       val s3Client = AmazonS3ClientBuilder.standard()
         .withEndpointConfiguration(endpointConfiguration)
@@ -194,7 +195,7 @@ object MinioUtils {
     try {
       val deltaTable = DeltaTable.forPath(spark, fullPath)
 
-      var mergeBuilder = deltaTable
+      val mergeBuilder = deltaTable
         .as("target")
         .merge(sourceDataFrame.as("source"), mergeCondition)
 
@@ -271,7 +272,7 @@ object MinioUtils {
                         spark: SparkSession,
                         bucketName: String,
                         path: String,
-                        retentionHours: Int = 168,
+                        retentionHours: Int = AppConfig.minioSettings.vacuumRetentionHours,
                       ): Unit = {
     validate(bucketName, path)
 
