@@ -1,0 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: connector-role
+  namespace: kafka
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["debezium-secret"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: connector-role-binding
+  namespace: kafka
+subjects:
+  - kind: ServiceAccount
+    name: debezium-connect-cluster-connect
+    namespace: kafka
+roleRef:
+  kind: Role
+  name: connector-role
+  apiGroup: rbac.authorization.k8s.io
+---

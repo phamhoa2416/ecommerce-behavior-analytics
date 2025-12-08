@@ -1,0 +1,47 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnect
+metadata:
+  name: debezium-connect-cluster
+  namespace: kafka
+  labels:
+    app: debezium-connect
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  replicas: 1
+  version: 3.7.0
+  bootstrapServers: kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+  image: quay.io/strimzi/kafka:latest-kafka-3.7.0
+  config:
+    group.id: debezium-connect-cluster
+    config.storage.topic: debezium-connect-configs
+    offset.storage.topic: debezium-connect-offsets
+    status.storage.topic: debezium-connect-status
+    config.storage.replication.factor: 1
+    offset.storage.replication.factor: 1
+    status.storage.replication.factor: 1
+    key.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    key.converter.schemas.enable: false
+    value.converter.schemas.enable: false
+    internal.key.converter: org.apache.kafka.connect.json.JsonConverter
+    internal.value.converter: org.apache.kafka.connect.json.JsonConverter
+    internal.key.converter.schemas.enable: false
+    internal.value.converter.schemas.enable: false
+    offset.flush.interval.ms: 10000
+#  resources:
+#    requests:
+#      cpu: 500m
+#      memory: 1Gi
+#    limits:
+#      cpu: 2000m
+#      memory: 2Gi
+#  livenessProbe:
+#    initialDelaySeconds: 60
+#    periodSeconds: 30
+#    timeoutSeconds: 10
+#  readinessProbe:
+#    initialDelaySeconds: 30
+#    periodSeconds: 10
+#    timeoutSeconds: 10
+
