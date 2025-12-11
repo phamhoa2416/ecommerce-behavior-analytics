@@ -1,4 +1,4 @@
-package com.example
+package com.example.config
 
 import com.typesafe.config.{Config, ConfigFactory}
 import org.slf4j.LoggerFactory

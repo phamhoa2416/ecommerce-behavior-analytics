@@ -1,6 +1,6 @@
 package com.example.main
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import com.example.handler.{BackpressureHandler, DLQHandler, RetryHandler}
 import com.example.lineage.LineageTracker
 import com.example.parser.Parser
