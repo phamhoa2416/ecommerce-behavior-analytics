@@ -1,6 +1,6 @@
 package com.example.main
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import com.example.handler.{BackpressureHandler, DLQHandler, RetryHandler}
 import com.example.lineage.LineageTracker
 import com.example.parser.Parser
@@ -16,20 +16,20 @@ import scala.util.{Failure, Success, Try}
 object STREAMING {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  val kafkaBootstrapServer: String = AppConfig.KAFKA_BOOTSTRAP_SERVERS
-  val kafkaTopic: String = AppConfig.KAFKA_STREAM_TOPIC
+  private val kafkaBootstrapServer: String = AppConfig.KAFKA_BOOTSTRAP_SERVERS
+  private val kafkaTopic: String = AppConfig.KAFKA_STREAM_TOPIC
   val kafkaGroupId: String = AppConfig.KAFKA_GROUP_ID
-  val kafkaStartingOffsets: String = AppConfig.KAFKA_STARTING_OFFSETS
+  private val kafkaStartingOffsets: String = AppConfig.KAFKA_STARTING_OFFSETS
 
-  val clickhouseUrl: String = AppConfig.CLICKHOUSE_URL
-  val clickhouseUser: String = AppConfig.CLICKHOUSE_USER
-  val clickhousePassword: String = AppConfig.CLICKHOUSE_PASSWORD
-  val clickhouseTable: String = AppConfig.CLICKHOUSE_TABLE
+  private val clickhouseUrl: String = AppConfig.CLICKHOUSE_URL
+  private val clickhouseUser: String = AppConfig.CLICKHOUSE_USER
+  private val clickhousePassword: String = AppConfig.CLICKHOUSE_PASSWORD
+  private val clickhouseTable: String = AppConfig.CLICKHOUSE_TABLE
 
-  val invalidPath: String = s"${AppConfig.MINIO_BASE_PATH}/streaming/invalid"
-  val dlqPath: String = s"${AppConfig.MINIO_BASE_PATH}/streaming/dlq"
-  val lineagePath: String = s"${AppConfig.MINIO_BASE_PATH}/streaming/lineage"
-  val dedupPath: String = s"${AppConfig.MINIO_BASE_PATH}/streaming/deduplication"
+  val invalidPath: String = AppConfig.PIPELINE_STREAMING_INVALID_PATH
+  val dlqPath: String = AppConfig.PIPELINE_STREAMING_DLQ_PATH
+  val lineagePath: String = AppConfig.PIPELINE_STREAMING_LINEAGE_PATH
+  val dedupPath: String = AppConfig.PIPELINE_STREAMING_DEDUP_PATH
 
   def main(args: Array[String]): Unit = {
     val spark = SparkUtils.createSparkSession("Streaming")
@@ -55,7 +55,7 @@ object STREAMING {
       user = clickhouseUser,
       password = clickhousePassword,
       batchSize = AppConfig.CLICKHOUSE_BATCH_SIZE,
-      maxConnections = sys.env.get("CLICKHOUSE_MAX_CONNECTIONS").flatMap(v => Try(v.toInt).toOption).getOrElse(10)
+      maxConnections = AppConfig.clickhouseSettings.maxConnections
     ) match {
       case Success(_) => logger.info("ClickHouse connection pool initialized")
       case Failure(exception) =>
@@ -67,7 +67,7 @@ object STREAMING {
       spark = spark,
       bucketName = AppConfig.MINIO_BUCKET_NAME,
       dedupPath = dedupPath,
-      maxCacheSize = sys.env.get("DEDUP_CACHE_SIZE").flatMap(v => Try(v.toInt).toOption).getOrElse(1000000)) match {
+      maxCacheSize = AppConfig.applicationConfig.deduplication.maxCacheSize) match {
       case Success(_) => logger.info("Deduplication store initialized")
       case Failure(exception) =>
         logger.warn("Failed to initialize deduplication store, continuing without persistence", exception)
@@ -105,7 +105,7 @@ object STREAMING {
 
           val deduplicatedDF = DeduplicationStore.filterDuplicates(
             batchDF,
-            keyColumns = Seq("event_time", "user_id", "product_id", "event_type")
+            keyColumns = AppConfig.applicationConfig.pipeline.dedupKeyColumns
           )
 
           val dedupCount = batchDF.count() - deduplicatedDF.count()
@@ -155,7 +155,7 @@ object STREAMING {
             case Success(_) =>
               logger.info(s"[batch $batchId] ClickHouse write succeeded")
 
-              if (batchId % 10 == 0) {
+              if (batchId % AppConfig.applicationConfig.pipeline.dedupPersistenceInterval == 0) {
                 DeduplicationStore.persistToDelta(spark, AppConfig.MINIO_BUCKET_NAME, dedupPath) match {
                   case Success(_) => logger.debug(s"[batch $batchId] Deduplication keys persisted")
                   case Failure(ex) => logger.warn(s"[batch $batchId] Failed to persist deduplication keys", ex)

@@ -1,5 +1,6 @@
 package com.example.util
 
+import com.example.AppConfig
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.functions.{col, concat_ws, current_timestamp, expr}
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
@@ -13,19 +14,23 @@ object DeduplicationStore {
   private val logger = LoggerFactory.getLogger(getClass)
 
   private val seenKeys: mutable.Set[String] = mutable.Set.empty[String]
-  private var maxCacheSize: Int = 1000000 // 1M keys in memory
+  private var maxCacheSize: Int = AppConfig.applicationConfig.deduplication.maxCacheSize
   private var persistencePath: Option[String] = None
+  private var loadHistoryHours: Int = AppConfig.applicationConfig.deduplication.loadHistoryHours
+  private var evictionBuffer: Int = AppConfig.applicationConfig.deduplication.evictionBuffer
 
 
   def initialize(
                   spark: SparkSession,
                   bucketName: String,
                   dedupPath: String,
-                  maxCacheSize: Int = 1000000,
+                  maxCacheSize: Int = AppConfig.applicationConfig.deduplication.maxCacheSize,
                   loadFromPersistence: Boolean = true
                 ): Try[Unit] = {
     try {
       this.maxCacheSize = maxCacheSize
+      this.loadHistoryHours = AppConfig.applicationConfig.deduplication.loadHistoryHours
+      this.evictionBuffer = AppConfig.applicationConfig.deduplication.evictionBuffer
       this.persistencePath = Some(s"s3a://$bucketName/$dedupPath")
 
       if (loadFromPersistence) {
@@ -56,7 +61,7 @@ object DeduplicationStore {
         val df = spark.read
           .format("delta")
           .load(fullPath)
-          .filter(col("dedup_timestamp") >= current_timestamp() - expr("INTERVAL 24 HOURS"))
+          .filter(col("dedup_timestamp") >= current_timestamp() - expr(s"INTERVAL $loadHistoryHours HOURS"))
           .select("dedup_key")
           .distinct()
 
@@ -78,7 +83,7 @@ object DeduplicationStore {
 
   def markSeen(key: String): Unit = {
     if (seenKeys.size >= maxCacheSize) {
-      val keysToRemove = seenKeys.take(seenKeys.size - maxCacheSize + 1000)
+      val keysToRemove = seenKeys.take(seenKeys.size - maxCacheSize + evictionBuffer)
       seenKeys --= keysToRemove
     }
     seenKeys += key
