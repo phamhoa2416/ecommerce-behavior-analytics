@@ -5,12 +5,16 @@ import com.amazonaws.client.builder.AwsClientBuilder
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import io.delta.tables.DeltaTable
 import org.apache.hadoop.fs.s3a.S3AFileSystem
+import org.apache.spark.ml.feature.StringIndexerModel
+import org.apache.spark.ml.recommendation.ALSModel
+import org.apache.spark.ml.util.{MLReadable, MLWritable}
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{bucket, col}
 import org.slf4j.LoggerFactory
 
 import scala.util.{Failure, Try}
 
+//noinspection ScalaUnusedSymbol,ScalaWeakerAccess
 object MinioUtils {
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -194,7 +198,7 @@ object MinioUtils {
     try {
       val deltaTable = DeltaTable.forPath(spark, fullPath)
 
-      var mergeBuilder = deltaTable
+      val mergeBuilder = deltaTable
         .as("target")
         .merge(sourceDataFrame.as("source"), mergeCondition)
 
@@ -229,12 +233,12 @@ object MinioUtils {
   }
 
   private def optimizeDeltaTable(
-                          spark: SparkSession,
-                          bucketName: String,
-                          path: String,
-                          zOrderColumns: Option[Seq[String]] = None,
-                          whereClause: Option[String] = None
-                        ): Unit = {
+                                  spark: SparkSession,
+                                  bucketName: String,
+                                  path: String,
+                                  zOrderColumns: Option[Seq[String]] = None,
+                                  whereClause: Option[String] = None
+                                ): Unit = {
     validate(bucketName, path)
 
     val fullPath = s"s3a://$bucketName/$path"
@@ -279,14 +283,83 @@ object MinioUtils {
 
     try {
       val deltaTable = DeltaTable.forPath(spark, fullPath)
-        logger.info(s"Deleting files older than $retentionHours hours")
-        deltaTable.vacuum(retentionHours)
-        logger.info(s"Successfully vacuumed Delta table: $fullPath")
+      logger.info(s"Deleting files older than $retentionHours hours")
+      deltaTable.vacuum(retentionHours)
+      logger.info(s"Successfully vacuumed Delta table: $fullPath")
     } catch {
       case ex: Exception =>
         logger.error(s"Failed to vacuum Delta table: $fullPath", ex)
         throw ex
     }
+  }
+
+  def saveMLModel[T <: MLWritable](
+                                    model: T,
+                                    bucketName: String,
+                                    path: String,
+                                    overwrite: Boolean = true
+                                  ): Unit = {
+    validate(bucketName, path)
+
+    val fullPath = s"s3a://$bucketName/$path"
+    logger.info(s"Saving ML model to MinIO: $fullPath")
+
+    try {
+      val writer = if (overwrite) model.write.overwrite() else model.write
+      writer.save(fullPath)
+      logger.info(s"Successfully saved ML model to: $fullPath")
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Failed to save ML model to MinIO: $fullPath", ex)
+        throw ex
+    }
+  }
+
+  def loadMLModel[T](
+                      bucketName: String,
+                      path: String,
+                      loader: MLReadable[T]
+                    ): T = {
+    validate(bucketName, path)
+
+    val fullPath = s"s3a://$bucketName/$path"
+    logger.info(s"Loading ML model from MinIO: $fullPath")
+
+    try {
+      val model = loader.load(fullPath)
+      logger.info(s"Successfully loaded ML model from: $fullPath")
+      model
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Failed to load ML model from MinIO: $fullPath", ex)
+        throw ex
+    }
+  }
+
+
+  def saveIndexerModel(
+                        model: StringIndexerModel,
+                        bucketName: String,
+                        path: String,
+                        overwrite: Boolean = true
+                      ): Unit = {
+    val labelCount = model.labelsArray.headOption.map(_.length).getOrElse(0)
+    logger.info(s"Saving StringIndexer model with $labelCount labels")
+    saveMLModel(model, bucketName, path, overwrite)
+  }
+
+  def loadIndexerModel(
+                        bucketName: String,
+                        path: String
+                      ): StringIndexerModel = {
+    loadMLModel(bucketName, path, StringIndexerModel)
+  }
+
+  def loadALSModel(
+                    bucketName: String,
+                    path: String
+                  ): ALSModel = {
+    loadMLModel(bucketName, path, ALSModel)
   }
 
   private def validate(bucketName: String, path: String): Unit = {

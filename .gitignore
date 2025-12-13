@@ -29,3 +29,5 @@ logs/
 
 !/dist/*.jar
 !/deploy/*.jar
+
+/data

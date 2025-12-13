@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 
 import scala.util.Try
 
+//noinspection ScalaUnusedSymbol
 object AppConfig {
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -43,14 +44,38 @@ object AppConfig {
     timezone: String
   )
 
+  final case class ALSEventWeight(
+    view: Double,
+    cart: Double,
+    removeFromCart: Double,
+    purchase: Double,
+    viewCap: Double,
+  )
+
+  final case class ALSConfig(
+    base_path: String,
+    rank: Int,
+    iter: Int,
+    regParam: Double,
+    alpha: Double,
+    K: Int,
+    eventWeight: ALSEventWeight
+  )
+
+  final case class SparkMLConfig(
+    timeDecayFactor: Double,
+    als: ALSConfig
+  )
+
   final case class ApplicationConfig(
     kafka: KafkaSettings,
     minio: MinioSettings,
     clickhouse: ClickhouseSettings,
-    spark: SparkSettings
+    spark: SparkSettings,
+    ml: SparkMLConfig
   )
 
-  val envStats: String = sys.env.getOrElse("ENV_JOB_RUN", "env")
+  private val envStats: String = sys.env.getOrElse("ENV_JOB_RUN", "env")
   logger.info(s"Loading configuration for environment: $envStats")
 
   val config: Config = {
@@ -66,6 +91,9 @@ object AppConfig {
   private val minioConfig = config.getConfig("minio")
   private val clickhouseConfig = config.getConfig("clickhouse")
   private val sparkConfig = config.getConfig("spark")
+  private val sparkMlConfig = config.getConfig("ml")
+  private val alsConfig = sparkMlConfig.getConfig("als")
+  private val alsEventWeightConfig = alsConfig.getConfig("event_weights")
 
   private def requireNonEmpty(value: String, key: String): String = {
     if (value == null || value.trim.isEmpty) {
@@ -84,7 +112,12 @@ object AppConfig {
       .getOrElse(defaultValue)
   }
 
-  val kafkaSettings: KafkaSettings = KafkaSettings(
+  private def envOrConfigDouble(envKey: String, defaultValue: => Double): Double = {
+    sys.env.get(envKey).flatMap(v => Try(v.toDouble).toOption)
+      .getOrElse(defaultValue)
+  }
+
+  private val kafkaSettings: KafkaSettings = KafkaSettings(
     bootstrapServers = envOrConfig("KAFKA_BOOTSTRAP_SERVERS", kafkaConfig.getString("bootstrap_servers")),
     batchTopic = envOrConfig("KAFKA_TOPIC", kafkaConfig.getString("batch_topic")),
     streamTopic = envOrConfig("KAFKA_STREAM_TOPIC", kafkaConfig.getString("stream_topic")),
@@ -93,7 +126,7 @@ object AppConfig {
     startingOffsets = envOrConfig("KAFKA_STARTING_OFFSETS", kafkaConfig.getString("starting_offsets"))
   )
 
-  val minioSettings: MinioSettings = MinioSettings(
+  private val minioSettings: MinioSettings = MinioSettings(
     endpoint = envOrConfig("MINIO_ENDPOINT", minioConfig.getString("endpoint")),
     accessKey = envOrConfig("MINIO_ROOT_USER",
       sys.env.getOrElse("MINIO_ACCESS_KEY", minioConfig.getString("access_key"))
@@ -107,7 +140,7 @@ object AppConfig {
     pathStyleAccess = envOrConfig("MINIO_PATH_STYLE_ACCESS", minioConfig.getString("path_style_access"))
   )
 
-  val clickhouseSettings: ClickhouseSettings = ClickhouseSettings(
+  private val clickhouseSettings: ClickhouseSettings = ClickhouseSettings(
     url = envOrConfig("CLICKHOUSE_JDBC_URL", clickhouseConfig.getString("jdbc_url")),
     user = envOrConfig("CLICKHOUSE_USER", clickhouseConfig.getString("user")),
     password = envOrConfig("CLICKHOUSE_PASSWORD", clickhouseConfig.getString("password")),
@@ -116,11 +149,30 @@ object AppConfig {
     batchSize = envOrConfigInt("CLICKHOUSE_BATCH_SIZE", clickhouseConfig.getInt("batch_size"))
   )
 
-  val sparkSettings: SparkSettings = SparkSettings(
+  private val sparkSettings: SparkSettings = SparkSettings(
     master = envOrConfig("SPARK_MASTER", sparkConfig.getString("master")),
     shufflePartitions = envOrConfigInt("SPARK_SHUFFLE_PARTITIONS", sparkConfig.getInt("shuffle_partitions")),
     timestampPattern = envOrConfig("SPARK_TIMESTAMP_PATTERN", sparkConfig.getString("timestamp_pattern")),
     timezone = envOrConfig("SPARK_TIMEZONE", sparkConfig.getString("timezone"))
+  )
+
+  private val sparkMlSettings: SparkMLConfig = SparkMLConfig(
+    timeDecayFactor = envOrConfigDouble("SPARK_ML_TIME_DECAY_FACTOR", sparkMlConfig.getDouble("time_decay_factor")),
+    als = ALSConfig(
+      base_path = envOrConfig("SPARK_ML_ALS_BASE_PATH", alsConfig.getString("base_path")),
+      rank = envOrConfigInt("SPARK_ML_ALS_RANK", alsConfig.getInt("rank")),
+      iter = envOrConfigInt("SPARK_ML_ALS_MAX_ITERATION", alsConfig.getInt("iter")),
+      regParam = envOrConfigDouble("SPARK_ML_ALS_REGULARIZATION", alsConfig.getDouble("reg_param")),
+      alpha = envOrConfigDouble("SPARK_ML_ALS_IMPLICIT_ALPHA", alsConfig.getDouble("alpha")),
+      K = envOrConfigInt("SPARK_ML_ALS_EVALUATION_TOP_K", alsConfig.getInt("evaluation_top_K")),
+      eventWeight = ALSEventWeight(
+        view = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_VIEW", alsEventWeightConfig.getDouble("view")),
+        cart = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_CART", alsEventWeightConfig.getDouble("cart")),
+        removeFromCart = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_REMOVE_FROM_CART", alsEventWeightConfig.getDouble("remove_from_cart")),
+        purchase = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_PURCHASE", alsEventWeightConfig.getDouble("purchase")),
+        viewCap = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_VIEW_CAP", alsEventWeightConfig.getDouble("view_cap"))
+      )
+    )
   )
 
   // Backwards compatible fields
@@ -151,7 +203,20 @@ object AppConfig {
   val SPARK_TIMESTAMP_PATTERN: String = sparkSettings.timestampPattern
   val SPARK_TIMEZONE: String = sparkSettings.timezone
 
+  val SPARK_ML_TIME_DECAY_FACTOR: Double = sparkMlSettings.timeDecayFactor
+  val SPARK_ML_ALS_RANK: Int = sparkMlSettings.als.rank
+  val SPARK_ML_ALS_MAX_ITERATION: Int = sparkMlSettings.als.iter
+  val SPARK_ML_ALS_REGULARIZATION: Double = sparkMlSettings.als.regParam
+  val SPARK_ML_ALS_IMPLICIT_ALPHA: Double = sparkMlSettings.als.alpha
+  val SPARK_ML_ALS_EVALUATION_TOP_K: Int = sparkMlSettings.als.K
+  val SPARK_ML_ALS_BASE_PATH: String = sparkMlSettings.als.base_path
+  val SPARK_ML_ALS_EVENT_WEIGHT_VIEW: Double = sparkMlSettings.als.eventWeight.view
+  val SPARK_ML_ALS_EVENT_WEIGHT_CART: Double = sparkMlSettings.als.eventWeight.cart
+  val SPARK_ML_ALS_EVENT_WEIGHT_REMOVE_FROM_CART: Double = sparkMlSettings.als.eventWeight.removeFromCart
+  val SPARK_ML_ALS_EVENT_WEIGHT_PURCHASE: Double = sparkMlSettings.als.eventWeight.purchase
+  val SPARK_ML_ALS_EVENT_WEIGHT_VIEW_CAP: Double = sparkMlSettings.als.eventWeight.viewCap
+
   /** Convenience accessor that returns the full configuration as a single value. */
   val applicationConfig: ApplicationConfig =
-    ApplicationConfig(kafkaSettings, minioSettings, clickhouseSettings, sparkSettings)
+    ApplicationConfig(kafkaSettings, minioSettings, clickhouseSettings, sparkSettings, sparkMlSettings)
 }
