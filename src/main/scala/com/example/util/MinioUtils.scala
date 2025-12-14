@@ -5,6 +5,7 @@ import com.amazonaws.client.builder.AwsClientBuilder
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import io.delta.tables.DeltaTable
 import org.apache.hadoop.fs.s3a.S3AFileSystem
+import org.apache.spark.ml.PipelineModel
 import org.apache.spark.ml.feature.StringIndexerModel
 import org.apache.spark.ml.recommendation.ALSModel
 import org.apache.spark.ml.util.{MLReadable, MLWritable}
@@ -17,6 +18,11 @@ import scala.util.{Failure, Try}
 //noinspection ScalaUnusedSymbol,ScalaWeakerAccess
 object MinioUtils {
   private val logger = LoggerFactory.getLogger(getClass)
+
+  private def validate(bucketName: String, path: String): Unit = {
+    require(bucketName.nonEmpty, "Bucket name must be provided")
+    require(path.nonEmpty, "Path must be provided")
+  }
 
   def configureMinIO(
                       spark: SparkSession,
@@ -362,8 +368,10 @@ object MinioUtils {
     loadMLModel(bucketName, path, ALSModel)
   }
 
-  private def validate(bucketName: String, path: String): Unit = {
-    require(bucketName.nonEmpty, "Bucket name must be provided")
-    require(path.nonEmpty, "Path must be provided")
+  def loadClassificationModel(
+                               bucketName: String,
+                               path: String
+                             ): PipelineModel = {
+    loadMLModel(bucketName, path, PipelineModel)
   }
 }
