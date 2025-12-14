@@ -3,17 +3,26 @@ package com.example.util
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
-import com.example.AppConfig
 import io.delta.tables.DeltaTable
 import org.apache.hadoop.fs.s3a.S3AFileSystem
+import org.apache.spark.ml.PipelineModel
+import org.apache.spark.ml.feature.StringIndexerModel
+import org.apache.spark.ml.recommendation.ALSModel
+import org.apache.spark.ml.util.{MLReadable, MLWritable}
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 import org.slf4j.LoggerFactory
 
 import scala.util.{Failure, Try}
 
+//noinspection ScalaUnusedSymbol,ScalaWeakerAccess
 object MinioUtils {
   private val logger = LoggerFactory.getLogger(getClass)
+
+  private def validate(bucketName: String, path: String): Unit = {
+    require(bucketName.nonEmpty, "Bucket name must be provided")
+    require(path.nonEmpty, "Path must be provided")
+  }
 
   def configureMinIO(
                       spark: SparkSession,
@@ -30,8 +39,8 @@ object MinioUtils {
     hadoopConf.set("fs.s3a.connection.ssl.enabled", "false")
     hadoopConf.set("fs.s3a.path.style.access", pathStyleAccess)
     hadoopConf.set("fs.s3a.impl", classOf[S3AFileSystem].getName)
-    hadoopConf.set("fs.s3a.connection.maximum", AppConfig.minioSettings.connectionMaximum.toString)
-    hadoopConf.set("fs.s3a.attempts.maximum", AppConfig.minioSettings.attemptsMaximum.toString)
+    hadoopConf.set("fs.s3a.connection.maximum", "15")
+    hadoopConf.set("fs.s3a.attempts.maximum", "3")
     hadoopConf.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
   }
 
@@ -43,7 +52,7 @@ object MinioUtils {
                        ): Try[Unit] = {
     Try {
       val credentials = new BasicAWSCredentials(accessKey, secretKey)
-      val endpointConfiguration = new AwsClientBuilder.EndpointConfiguration(endpoint, AppConfig.minioSettings.awsRegion)
+      val endpointConfiguration = new AwsClientBuilder.EndpointConfiguration(endpoint, "us-east-1")
 
       val s3Client = AmazonS3ClientBuilder.standard()
         .withEndpointConfiguration(endpointConfiguration)
@@ -230,12 +239,12 @@ object MinioUtils {
   }
 
   private def optimizeDeltaTable(
-                          spark: SparkSession,
-                          bucketName: String,
-                          path: String,
-                          zOrderColumns: Option[Seq[String]] = None,
-                          whereClause: Option[String] = None
-                        ): Unit = {
+                                  spark: SparkSession,
+                                  bucketName: String,
+                                  path: String,
+                                  zOrderColumns: Option[Seq[String]] = None,
+                                  whereClause: Option[String] = None
+                                ): Unit = {
     validate(bucketName, path)
 
     val fullPath = s"s3a://$bucketName/$path"
@@ -272,7 +281,7 @@ object MinioUtils {
                         spark: SparkSession,
                         bucketName: String,
                         path: String,
-                        retentionHours: Int = AppConfig.minioSettings.vacuumRetentionHours,
+                        retentionHours: Int = 168,
                       ): Unit = {
     validate(bucketName, path)
 
@@ -280,9 +289,9 @@ object MinioUtils {
 
     try {
       val deltaTable = DeltaTable.forPath(spark, fullPath)
-        logger.info(s"Deleting files older than $retentionHours hours")
-        deltaTable.vacuum(retentionHours)
-        logger.info(s"Successfully vacuumed Delta table: $fullPath")
+      logger.info(s"Deleting files older than $retentionHours hours")
+      deltaTable.vacuum(retentionHours)
+      logger.info(s"Successfully vacuumed Delta table: $fullPath")
     } catch {
       case ex: Exception =>
         logger.error(s"Failed to vacuum Delta table: $fullPath", ex)
@@ -290,8 +299,79 @@ object MinioUtils {
     }
   }
 
-  private def validate(bucketName: String, path: String): Unit = {
-    require(bucketName.nonEmpty, "Bucket name must be provided")
-    require(path.nonEmpty, "Path must be provided")
+  def saveMLModel[T <: MLWritable](
+                                    model: T,
+                                    bucketName: String,
+                                    path: String,
+                                    overwrite: Boolean = true
+                                  ): Unit = {
+    validate(bucketName, path)
+
+    val fullPath = s"s3a://$bucketName/$path"
+    logger.info(s"Saving ML model to MinIO: $fullPath")
+
+    try {
+      val writer = if (overwrite) model.write.overwrite() else model.write
+      writer.save(fullPath)
+      logger.info(s"Successfully saved ML model to: $fullPath")
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Failed to save ML model to MinIO: $fullPath", ex)
+        throw ex
+    }
+  }
+
+  def loadMLModel[T](
+                      bucketName: String,
+                      path: String,
+                      loader: MLReadable[T]
+                    ): T = {
+    validate(bucketName, path)
+
+    val fullPath = s"s3a://$bucketName/$path"
+    logger.info(s"Loading ML model from MinIO: $fullPath")
+
+    try {
+      val model = loader.load(fullPath)
+      logger.info(s"Successfully loaded ML model from: $fullPath")
+      model
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Failed to load ML model from MinIO: $fullPath", ex)
+        throw ex
+    }
+  }
+
+
+  def saveIndexerModel(
+                        model: StringIndexerModel,
+                        bucketName: String,
+                        path: String,
+                        overwrite: Boolean = true
+                      ): Unit = {
+    val labelCount = model.labelsArray.headOption.map(_.length).getOrElse(0)
+    logger.info(s"Saving StringIndexer model with $labelCount labels")
+    saveMLModel(model, bucketName, path, overwrite)
+  }
+
+  def loadIndexerModel(
+                        bucketName: String,
+                        path: String
+                      ): StringIndexerModel = {
+    loadMLModel(bucketName, path, StringIndexerModel)
+  }
+
+  def loadALSModel(
+                    bucketName: String,
+                    path: String
+                  ): ALSModel = {
+    loadMLModel(bucketName, path, ALSModel)
+  }
+
+  def loadClassificationModel(
+                               bucketName: String,
+                               path: String
+                             ): PipelineModel = {
+    loadMLModel(bucketName, path, PipelineModel)
   }
 }
