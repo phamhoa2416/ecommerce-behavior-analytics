@@ -1,6 +1,6 @@
 package com.example.util
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import org.apache.spark.sql.SparkSession
 
 object SparkUtils {

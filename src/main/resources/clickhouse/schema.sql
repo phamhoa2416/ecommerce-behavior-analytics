@@ -8,7 +8,8 @@ CREATE TABLE ecommerce_events
     brand         String,
     price         Float64,
     user_id       UInt64,
-    user_session  String
+    user_session  String,
+    created_at    DateTime DEFAULT now()
 ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(event_time)
         ORDER BY (event_time, user_id);

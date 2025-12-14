@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-dag
+  namespace: airflow
+data:
+  ecommerce_batch_dag.py: |
+    from datetime import timedelta, datetime
+    from airflow import DAG
+    from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
+    from airflow.providers.cncf.kubernetes.sensors.spark_kubernetes import SparkKubernetesSensor
+    from airflow.operators.empty import EmptyOperator
+
+    default_args = {
+        "owner": "airflow",
+        "depends_on_past": False,
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+
+    # Dữ liệu mẫu có timestamp 2019-11-01 nên start_date phải trước
+    with DAG(
+        dag_id="ecommerce_batch_pipeline",
+        default_args=default_args,
+        schedule_interval="0 0 * * *",   # chạy mỗi 00:00
+        start_date=datetime(2019, 10, 1),
+        catchup=False,
+    ) as dag:
+
+        start = EmptyOperator(task_id="start")
+
+        spark_submit = SparkKubernetesOperator(
+            task_id="spark_batch_submit",
+            namespace="default",
+            application_file="/mnt/dags/spark-batch-job.yaml",
+            kubernetes_conn_id="kubernetes_default",
+            do_xcom_push=True,
+        )
+
+        spark_monitor = SparkKubernetesSensor(
+            task_id="spark_batch_monitor",
+            namespace="default",
+            application_name="{{ task_instance.xcom_pull('spark_batch_submit')['metadata']['name'] }}",
+            kubernetes_conn_id="kubernetes_default",
+        )
+
+        end = EmptyOperator(task_id="end")
+
+        start >> spark_submit >> spark_monitor >> end
