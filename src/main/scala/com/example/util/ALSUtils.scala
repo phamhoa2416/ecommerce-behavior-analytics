@@ -241,40 +241,4 @@ object ALSUtils {
 			(popular, "cold_start")
 		}
 	}
-
-	def saveModelMetadata(
-												 spark: SparkSession,
-												 bucketName: String,
-												 path: String,
-												 metadata: Map[String, String]
-											 ): Unit = {
-		import spark.implicits._
-
-		val metadataWithTimestamp = metadata + (
-			"saved_at" -> java.time.Instant.now().toString
-			)
-
-		val metadataDf = metadataWithTimestamp.toSeq.toDF("key", "value")
-
-		logger.info(s"Saving model metadata to s3a://$bucketName/$path")
-		MinioUtils.writeDeltaTable(
-			metadataDf,
-			bucketName,
-			path,
-			SaveMode.Overwrite
-		)
-	}
-
-	def loadModelMetadata(
-												 spark: SparkSession,
-												 bucketName: String,
-												 path: String
-											 ): Map[String, String] = {
-		import spark.implicits._
-
-		MinioUtils.readDeltaTable(spark, bucketName, path)
-			.as[(String, String)]
-			.collect()
-			.toMap
-	}
 }

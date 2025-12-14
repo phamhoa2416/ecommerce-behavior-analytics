@@ -2,76 +2,29 @@ package com.example.ml
 
 import com.example.AppConfig
 import com.example.handler.RetryHandler
-import com.example.util.{ALSUtils, MinioUtils, SparkUtils}
-import org.apache.spark.ml.feature.StringIndexer
+import com.example.util.{ALSUtils, MLUtils, MinioUtils, SparkUtils}
 import org.apache.spark.ml.evaluation.RankingEvaluator
+import org.apache.spark.ml.feature.StringIndexer
 import org.apache.spark.ml.recommendation.ALS
-import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
 import org.slf4j.LoggerFactory
 
-import java.time.{ZoneId, ZonedDateTime}
 import java.time.format.DateTimeFormatter
-import scala.util.{Failure, Success}
+import java.time.{ZoneId, ZonedDateTime}
 import scala.util.control.NonFatal
+import scala.util.{Failure, Success}
 
 object ALSTraining {
 	private val logger = LoggerFactory.getLogger(getClass)
 
-	private def parseTime(secs: Double): String = {
-		val h = secs.toInt / 3600
-		val m = (secs - h * 3600.0).toInt / 60
-		val s = secs - h * 3600.0 - m * 60
-
-		val parts = Seq(
-			if (h > 0) Some(f"${h}h") else None,
-			if (m > 0) Some(f"${m}m") else None,
-			if (s > 0) Some(f"$s%.3fs") else None
-		).flatten
-
-		if (parts.isEmpty) "0.0s" else parts.mkString(" ")
-	}
-
-	def main(args: Array[String]): Unit = {
+	def train(): Unit = {
 		logger.info("Starting Spark ML ALS E-commerce recommendation model training...")
 		val spark = SparkUtils.createSparkSession("ALSRecommendationModel")
 		import spark.implicits._
+		val cores = spark.sparkContext.defaultParallelism
 
 		try {
-			RetryHandler.withRetry(
-				MinioUtils.configureMinIO(
-					spark = spark,
-					endpoint = AppConfig.MINIO_ENDPOINT,
-					accessKey = AppConfig.MINIO_ACCESS_KEY,
-					secretKey = AppConfig.MINIO_SECRET_KEY,
-					pathStyleAccess = AppConfig.MINIO_PATH_STYLE_ACCESS
-				),
-				name = "MinIO Configuration"
-			) match {
-				case Success(_) => logger.info("MinIO configured successfully")
-				case Failure(exception) =>
-					logger.error("Failed to configure MinIO after retries", exception)
-					sys.exit(1)
-			}
-
-			val data: DataFrame =
-				RetryHandler.withRetry(
-					MinioUtils.readDeltaTable(
-						spark,
-						bucketName = AppConfig.MINIO_BUCKET_NAME,
-						path = AppConfig.MINIO_BASE_PATH
-					).cache(),
-					name = "Read Delta Table from MinIO"
-				) match {
-					case Success(df) =>
-						logger.info("Successfully read data from Delta table in MinIO.")
-						df
-					case Failure(exception) =>
-						logger.error("Failed to read Delta table from MinIO after retries", exception)
-						sys.exit(1)
-				}
-
-			logger.info(s"Loaded ${data.count()} records from MinIO Delta table")
+			val data = MLUtils.loadDataFromMinio(spark, logger)
 
 			val ratedData = data
 				.withColumn("view_ratings",
@@ -132,23 +85,17 @@ object ALSTraining {
 					$"user_idx".cast("int").alias("userId"),
 					$"product_idx".cast("int").alias("productId"),
 					$"log_score".cast("float").alias("rating")
-				)
-				.cache()
+				).cache()
 
 			logger.info(s"Total indexed records: ${indexedData.count()}")
 			val uniqueUsers = indexedData.select("userId").distinct().count()
 			logger.info(s"Unique users: $uniqueUsers")
 			logger.info(s"Unique products: ${indexedData.select("productId").distinct().count()}")
 
-			val Array(training, test) = indexedData.randomSplit(Array(0.8, 0.2), seed = 36)
-
-			training.cache()
-			test.cache()
-
-			logger.info(s"Training set size: ${training.count()}")
-			logger.info(s"Test set size: ${test.count()}")
+			val Array(training, test) = MLUtils.prepareModelData(indexedData, logger)
 
 			val als = new ALS()
+				.setNumBlocks(cores * AppConfig.SPARK_ML_ALS_BLOCK_FACTOR)
 				.setUserCol("userId")
 				.setItemCol("productId")
 				.setRatingCol("rating")
@@ -164,13 +111,14 @@ object ALSTraining {
 			val startTime = System.currentTimeMillis()
 			val alsModel = als.fit(training)
 			val trainingTime = (System.currentTimeMillis() - startTime) / 1000.0
-			logger.info(s"ALS model training completed in ${parseTime(trainingTime)}")
+			logger.info(s"ALS model training completed in ${MLUtils.parseTime(trainingTime)}")
 
 			logger.info(s"Starting ALS model evaluation...")
 			val K = AppConfig.SPARK_ML_ALS_EVALUATION_TOP_K
 
 			logger.info(s"Generating top-$K recommendations for evaluation...")
 			val userRecommendations = alsModel.recommendForAllUsers(K).cache()
+			userRecommendations.count() // Materialize the recommendations
 
 			logger.info(s"Generating ground truth for evaluation...")
 			val groundTruth = test
@@ -303,10 +251,11 @@ object ALSTraining {
 			}
 
 			RetryHandler.withRetry(
-				ALSUtils.saveModelMetadata(
+				MLUtils.saveModelMetadata(
 					spark,
 					AppConfig.MINIO_BUCKET_NAME,
 					s"$modelBasePath/metadata",
+					logger,
 					Map(
 						"timestamp" -> ZonedDateTime.now(ZoneId.of("UTC"))
 							.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")),
@@ -379,14 +328,14 @@ object ALSTraining {
 					throw ex
 			}
 
-			logger.info("Model training and saving completed successfully.")
+			logger.info("Model training and saving completed successfully")
 		} catch {
 			case NonFatal(ex) =>
-				logger.error("An error occurred during model training.", ex)
+				logger.error("An error occurred during model training", ex)
 				throw ex
 		} finally {
 			spark.stop()
-			logger.info("Spark session stopped. Application finished.")
+			logger.info("Spark session stopped. Application finished")
 		}
 	}
 }
