@@ -1,6 +1,6 @@
 package com.example.ml
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import com.example.handler.RetryHandler
 import com.example.util.{MLUtils, MinioUtils, SparkUtils}
 import org.apache.spark.ml.Pipeline

@@ -1,6 +1,6 @@
 package com.example.util
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.functions.{col, concat_ws, current_timestamp, expr}
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}

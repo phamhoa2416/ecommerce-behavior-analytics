@@ -84,11 +84,57 @@ object AppConfig {
     pollTimeoutSeconds: Int = 1
   )
 
+  final case class ALSEventWeight(
+    view: Double,
+    cart: Double,
+    removeFromCart: Double,
+    purchase: Double,
+    viewCap: Double,
+  )
+
+  final case class ALSConfig(
+    base_path: String,
+    rank: Int,
+    iter: Int,
+    regParam: Double,
+    alpha: Double,
+    K: Int,
+    blockFactor: Int,
+    eventWeight: ALSEventWeight
+  )
+
+  final case class ClsEventWeight(
+    view: Double,
+    cart: Double,
+    removeFromCart: Double,
+    purchase: Double
+  )
+
+  final case class ClsConfig(
+    base_path: String,
+    eventWeight: ClsEventWeight,
+    trees: Int,
+    maxDepth: Int,
+    minInstancesPerNode: Int,
+    maxBins: Int,
+    subsamplingRate: Double,
+    featureSubsetStrategy: String,
+    useTopNBucketing: Boolean,
+    topNCategories: Int,
+  )
+
+  final case class SparkMLConfig(
+    timeDecayFactor: Double,
+    als: ALSConfig,
+    cls: ClsConfig
+  )
+
   final case class ApplicationConfig(
     kafka: KafkaSettings,
     minio: MinioSettings,
     clickhouse: ClickhouseSettings,
     spark: SparkSettings,
+    ml: SparkMLConfig,
     pipeline: PipelineSettings = PipelineSettings(),
     validation: ValidationSettings = ValidationSettings(),
     deduplication: DeduplicationSettings = DeduplicationSettings(),
@@ -111,6 +157,11 @@ object AppConfig {
   private val minioConfig = config.getConfig("minio")
   private val clickhouseConfig = config.getConfig("clickhouse")
   private val sparkConfig = config.getConfig("spark")
+  private val sparkMlConfig = config.getConfig("ml")
+  private val alsConfig = sparkMlConfig.getConfig("als")
+  private val alsEventWeightConfig = alsConfig.getConfig("event_weights")
+  private val clsConfig = sparkMlConfig.getConfig("classification")
+  private val clsEventWeightConfig = clsConfig.getConfig("weights")
 
   private val pipelineConfig = Try(config.getConfig("pipeline")).getOrElse(ConfigFactory.empty())
   private val validationConfig = Try(config.getConfig("validation")).getOrElse(ConfigFactory.empty())
@@ -141,6 +192,11 @@ object AppConfig {
 
   private def envOrConfigSeq(envKey: String, defaultValue: => Seq[String]): Seq[String] = {
     sys.env.get(envKey).map(_.split(",").map(_.trim).toSeq)
+      .getOrElse(defaultValue)
+  }
+
+  private def envOrConfigBoolean(envKey: String, defaultValue: => Boolean): Boolean = {
+    sys.env.get(envKey).flatMap(v => Try(v.toBoolean).toOption)
       .getOrElse(defaultValue)
   }
 
@@ -199,6 +255,49 @@ object AppConfig {
       Try(sparkConfig.getString("watermark_duration")).getOrElse("5 minutes"))
   )
 
+  private val sparkMlSettings: SparkMLConfig = SparkMLConfig(
+    timeDecayFactor = envOrConfigDouble("SPARK_ML_TIME_DECAY_FACTOR", sparkMlConfig.getDouble("time_decay_factor")),
+    als = ALSConfig(
+      base_path = envOrConfig("SPARK_ML_ALS_BASE_PATH", alsConfig.getString("base_path")),
+      rank = envOrConfigInt("SPARK_ML_ALS_RANK", alsConfig.getInt("rank")),
+      iter = envOrConfigInt("SPARK_ML_ALS_MAX_ITERATION", alsConfig.getInt("iter")),
+      regParam = envOrConfigDouble("SPARK_ML_ALS_REGULARIZATION", alsConfig.getDouble("reg_param")),
+      alpha = envOrConfigDouble("SPARK_ML_ALS_IMPLICIT_ALPHA", alsConfig.getDouble("alpha")),
+      K = envOrConfigInt("SPARK_ML_ALS_EVALUATION_TOP_K", alsConfig.getInt("evaluation_top_K")),
+      blockFactor = envOrConfigInt("SPARK_ML_ALS_BLOCK_FACTOR", alsConfig.getInt("block_factor")),
+      eventWeight = ALSEventWeight(
+        view = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_VIEW", alsEventWeightConfig.getDouble("view")),
+        cart = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_CART", alsEventWeightConfig.getDouble("cart")),
+        removeFromCart = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_REMOVE_FROM_CART", alsEventWeightConfig.getDouble("remove_from_cart")),
+        purchase = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_PURCHASE", alsEventWeightConfig.getDouble("purchase")),
+        viewCap = envOrConfigDouble("SPARK_ML_ALS_EVENT_WEIGHT_VIEW_CAP", alsEventWeightConfig.getDouble("view_cap"))
+      ),
+    ),
+    cls = ClsConfig(
+      base_path = envOrConfig("SPARK_ML_CLS_BASE_PATH", clsConfig.getString("base_path")),
+      eventWeight = ClsEventWeight(
+        view = envOrConfigDouble("SPARK_ML_CLS_EVENT_WEIGHT_VIEW", clsEventWeightConfig.getDouble("view")),
+        cart = envOrConfigDouble("SPARK_ML_CLS_EVENT_WEIGHT_CART", clsEventWeightConfig.getDouble("cart")),
+        removeFromCart = envOrConfigDouble("SPARK_ML_CLS_EVENT_WEIGHT_REMOVE_FROM_CART", clsEventWeightConfig.getDouble("remove_from_cart")),
+        purchase = envOrConfigDouble("SPARK_ML_CLS_EVENT_WEIGHT_PURCHASE", clsEventWeightConfig.getDouble("purchase"))
+      ),
+      trees = envOrConfigInt("SPARK_ML_CLS_TREES", clsConfig.getInt("trees")),
+      maxDepth = envOrConfigInt("SPARK_ML_CLS_MAX_DEPTH", clsConfig.getInt("max_depth")),
+      minInstancesPerNode = envOrConfigInt("SPARK_ML_CLS_MIN_INSTANCES_PER_NODE", clsConfig.getInt("min_instances_per_node")),
+      maxBins = envOrConfigInt("SPARK_ML_CLS_MAX_BINS", clsConfig.getInt("max_bins")),
+      subsamplingRate = envOrConfigDouble("SPARK_ML_CLS_SUBSAMPLING_RATE", clsConfig.getDouble("subsampling_rate")),
+      featureSubsetStrategy = envOrConfig("SPARK_ML_CLS_FEATURE_SUBSET_STRATEGY", clsConfig.getString("feature_subset_strategy")),
+      useTopNBucketing = envOrConfigBoolean("SPARK_ML_CLS_USE_TOP_N_BUCKETING", clsConfig.getBoolean("use_top_n_bucketing")),
+      topNCategories = envOrConfigInt("SPARK_ML_CLS_TOP_N_CATEGORIES", clsConfig.getInt("top_n_categories")),
+    )
+  )
+
+  // Validate topNCategories + 1 <= maxBins only when bucketing is enabled
+  if (sparkMlSettings.cls.useTopNBucketing) {
+    require(sparkMlSettings.cls.topNCategories + 1 <= sparkMlSettings.cls.maxBins,
+      s"topNCategories (${sparkMlSettings.cls.topNCategories}) + 1 must be <= maxBins (${sparkMlSettings.cls.maxBins}) to accommodate 'other' bucket")
+  }
+
   // Backwards compatible fields
   val KAFKA_BOOTSTRAP_SERVERS: String = kafkaSettings.bootstrapServers
   val KAFKA_BATCH_TOPIC: String = kafkaSettings.batchTopic
@@ -227,6 +326,35 @@ object AppConfig {
   val SPARK_TIMESTAMP_PATTERN: String = sparkSettings.timestampPattern
   val SPARK_TIMEZONE: String = sparkSettings.timezone
   val SPARK_WATERMARK_DURATION: String = sparkSettings.watermarkDuration
+
+  val SPARK_ML_TIME_DECAY_FACTOR: Double = sparkMlSettings.timeDecayFactor
+
+  val SPARK_ML_ALS_RANK: Int = sparkMlSettings.als.rank
+  val SPARK_ML_ALS_MAX_ITERATION: Int = sparkMlSettings.als.iter
+  val SPARK_ML_ALS_REGULARIZATION: Double = sparkMlSettings.als.regParam
+  val SPARK_ML_ALS_IMPLICIT_ALPHA: Double = sparkMlSettings.als.alpha
+  val SPARK_ML_ALS_EVALUATION_TOP_K: Int = sparkMlSettings.als.K
+  val SPARK_ML_ALS_BASE_PATH: String = sparkMlSettings.als.base_path
+  val SPARK_ML_ALS_EVENT_WEIGHT_VIEW: Double = sparkMlSettings.als.eventWeight.view
+  val SPARK_ML_ALS_EVENT_WEIGHT_CART: Double = sparkMlSettings.als.eventWeight.cart
+  val SPARK_ML_ALS_EVENT_WEIGHT_REMOVE_FROM_CART: Double = sparkMlSettings.als.eventWeight.removeFromCart
+  val SPARK_ML_ALS_EVENT_WEIGHT_PURCHASE: Double = sparkMlSettings.als.eventWeight.purchase
+  val SPARK_ML_ALS_EVENT_WEIGHT_VIEW_CAP: Double = sparkMlSettings.als.eventWeight.viewCap
+  val SPARK_ML_ALS_BLOCK_FACTOR: Int = sparkMlSettings.als.blockFactor
+
+  val SPARK_ML_CLS_BASE_PATH: String = sparkMlSettings.cls.base_path
+  val SPARK_ML_CLS_EVENT_WEIGHT_VIEW: Double = sparkMlSettings.cls.eventWeight.view
+  val SPARK_ML_CLS_EVENT_WEIGHT_CART: Double = sparkMlSettings.cls.eventWeight.cart
+  val SPARK_ML_CLS_EVENT_WEIGHT_REMOVE_FROM_CART: Double = sparkMlSettings.cls.eventWeight.removeFromCart
+  val SPARK_ML_CLS_EVENT_WEIGHT_PURCHASE: Double = sparkMlSettings.cls.eventWeight.purchase
+  val SPARK_ML_CLS_TREES: Int = sparkMlSettings.cls.trees
+  val SPARK_ML_CLS_MAX_DEPTH: Int = sparkMlSettings.cls.maxDepth
+  val SPARK_ML_CLS_MIN_INSTANCES_PER_NODE: Int = sparkMlSettings.cls.minInstancesPerNode
+  val SPARK_ML_CLS_MAX_BINS: Int = sparkMlSettings.cls.maxBins
+  val SPARK_ML_CLS_SUBSAMPLING_RATE: Double = sparkMlSettings.cls.subsamplingRate
+  val SPARK_ML_CLS_FEATURE_SUBSET_STRATEGY: String = sparkMlSettings.cls.featureSubsetStrategy
+  val SPARK_ML_CLS_USE_TOP_N_BUCKETING: Boolean = sparkMlSettings.cls.useTopNBucketing
+  val SPARK_ML_CLS_TOP_N_CATEGORIES: Int = sparkMlSettings.cls.topNCategories
 
   private val pipelineSettings: PipelineSettings = PipelineSettings(
     batchInvalidPath = envOrConfig("PIPELINE_BATCH_INVALID_PATH",
@@ -297,6 +425,7 @@ object AppConfig {
       minioSettings,
       clickhouseSettings,
       sparkSettings,
+      sparkMlSettings,
       pipelineSettings,
       validationSettings,
       deduplicationSettings,

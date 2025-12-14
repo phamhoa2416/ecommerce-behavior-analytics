@@ -1,7 +1,7 @@
 package com.example.util
 
 import com.clickhouse.jdbc.ClickHouseDataSource
-import com.example.AppConfig
+import com.example.config.AppConfig
 import org.slf4j.LoggerFactory
 
 import java.sql.Connection

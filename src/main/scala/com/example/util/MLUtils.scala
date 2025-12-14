@@ -1,6 +1,6 @@
 package com.example.util
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import com.example.handler.RetryHandler
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
 import org.slf4j.Logger

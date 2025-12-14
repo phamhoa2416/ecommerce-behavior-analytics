@@ -1,6 +1,6 @@
 package com.example.handler
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import com.example.util.MinioUtils
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
@@ -92,7 +92,7 @@ object DLQHandler {
       
       while (isRunning || !queue.isEmpty) {
         try {
-          val pollTimeout = com.example.AppConfig.applicationConfig.dlq.pollTimeoutSeconds
+          val pollTimeout = AppConfig.applicationConfig.dlq.pollTimeoutSeconds
           val dlqRecord = queue.poll(pollTimeout, TimeUnit.SECONDS)
 
           if (dlqRecord != null) {
