@@ -16,4 +16,33 @@ object Schema {
       StructField("user_session", StringType, nullable = true)
     )
   )
+
+  val schemaCDC = StructType(
+    Seq(
+      StructField("id", IntegerType),
+      StructField("event_time", LongType),
+      StructField("event_type", StringType),
+      StructField("product_id", LongType),
+      StructField("category_id", LongType),
+      StructField("category_code", StringType),
+      StructField("brand", StringType),
+      StructField("price", BinaryType),
+      StructField("user_id", LongType),
+      StructField("user_session", StringType),
+      StructField("__deleted", StringType),
+      StructField("__op", StringType),
+      StructField("__source_ts_ms", LongType)
+    )
+  )
+
+  val debeziumCDC = new StructType()
+    .add("schema", new StructType()
+      .add("type", StringType)
+      .add("fields", ArrayType(new StructType()
+        .add("type", StringType)
+        .add("optional", StringType)
+        .add("field", StringType)))
+      .add("optional", StringType)
+      .add("name", StringType))
+    .add("payload", schemaCDC)
 }

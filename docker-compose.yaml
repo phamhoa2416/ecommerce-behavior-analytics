@@ -5,7 +5,6 @@ services:
     container_name: kafka
     ports:
       - "9092:9092"
-      - "9101:9101"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
@@ -20,7 +19,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: kafka
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
     networks:
@@ -33,7 +31,7 @@ services:
     depends_on:
       - kafka
     ports:
-      - "8083:8080"
+      - "8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -65,7 +63,7 @@ services:
       - kafka
       - postgres
     ports:
-      - "8084:8083"
+      - "8083:8083"
     environment:
       BOOTSTRAP_SERVERS: kafka:29092
       GROUP_ID: "1"
@@ -81,7 +79,7 @@ services:
       - lakehouse-network
 
   clickhouse:
-    image: yandex/clickhouse-server:21.2.5
+    image: clickhouse/clickhouse-server:latest
     container_name: clickhouse
     hostname: clickhouse
     ports:
@@ -95,85 +93,6 @@ services:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-    networks:
-      - lakehouse-network
-
-  prometheus:
-     image: prom/prometheus:v2.50.0
-     container_name: prometheus
-     hostname: prometheus
-     ports:
-       - "9090:9090"
-     volumes:
-       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-       - prometheus_data:/prometheus
-     command:
-       - '--config.file=/etc/prometheus/prometheus.yml'
-       - '--storage.tsdb.path=/prometheus'
-       - '--web.console.libraries=/etc/prometheus/console_libraries'
-       - '--web.console.templates=/etc/prometheus/consoles'
-       - '--web.enable-lifecycle'
-     networks:
-       - lakehouse-network
-
-  grafana:
-     image: grafana/grafana:10.2.0
-     container_name: grafana
-     hostname: grafana
-     depends_on:
-       - prometheus
-     ports:
-       - "3000:3000"
-     environment:
-       GF_SECURITY_ADMIN_USER: admin
-       GF_SECURITY_ADMIN_PASSWORD: password
-       GF_INSTALL_PLUGINS: ''
-     volumes:
-       - grafana_data:/var/lib/grafana
-       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-     networks:
-       - lakehouse-network
-
-  node-exporter:
-    image: prom/node-exporter:v1.7.0
-    container_name: node-exporter
-    hostname: node-exporter
-    ports:
-      - "9100:9100"
-    command:
-      - "--path.procfs=/host/proc"
-      - "--path.rootfs=/rootfs"
-      - "--path.sysfs=/host/sys"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    networks:
-      - lakehouse-network
-
-  kafka-exporter:
-    image: danielqsj/kafka-exporter:v1.5.0
-    container_name: kafka-exporter
-    hostname: kafka-exporter
-    depends_on:
-      - kafka
-    ports:
-      - "9308:9308"
-    command:
-      - "--kafka.server=kafka:29092"
-    networks:
-      - lakehouse-network
-
-  clickhouse-exporter:
-    image: f1yegor/clickhouse-exporter
-    container_name: clickhouse-exporter
-    hostname: clickhouse-exporter
-    ports:
-      - "9116:9116"
-    environment:
-      CLICKHOUSE_EXPORTER_CLICKHOUSE_ADDR: http://clickhouse:8123
-      CLICKHOUSE_EXPORTER_LISTEN_ADDR: ":9116"
     networks:
       - lakehouse-network
 
@@ -213,5 +132,3 @@ volumes:
   clickhouse_data:
   minio_data:
   postgres_data:
-  prometheus_data:
-  grafana_data:

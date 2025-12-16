@@ -1,6 +1,6 @@
 package com.example.validation
 
-import com.example.AppConfig
+import com.example.config.AppConfig
 import com.example.util.MinioUtils
 import com.example.validation.model.{DQMetrics, Result}
 import org.apache.spark.sql.functions._

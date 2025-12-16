@@ -4,9 +4,9 @@ import os
 
 from kafka import KafkaProducer
 
-CSV_FILE_PATH = os.getenv("CSV_FILE_PATH_KAFKA", "data/2019-Nov.csv")
-KAFKA_STREAM_TOPIC = os.getenv("KAFKA_STREAM_TOPIC", "ecommerce_events")
-BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9094")
+CSV_FILE_PATH = os.getenv("CSV_FILE_PATH_KAFKA", "./2019-Nov.csv")
+KAFKA_STREAM_TOPIC = os.getenv("KAFKA_STREAM_TOPIC", "ecommerce_streaming_events")
+BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
 def process_to_kafka():
     producer = KafkaProducer(
@@ -14,7 +14,7 @@ def process_to_kafka():
         linger_ms=20,
         batch_size=65536,
         buffer_memory=33554432,
-        compression_type="snappy",
+        # compression_type="snappy",
         acks="all",
         retries=3,
         max_in_flight_requests_per_connection=1,

@@ -25,11 +25,11 @@ object ClickHouseUtils {
                 ): Try[Unit] = {
     try {
       val props = new Properties()
-      props.put("user", user)
-      props.put("password", password)
-      props.put("batchsize", batchSize)
-      props.put("socket_timeout", AppConfig.clickhouseSettings.socketTimeoutMs.toString)
-      props.put("connect_timeout", connectionTimeout.toString)
+      props.setProperty("user", user)
+      props.setProperty("password", password)
+      props.setProperty("batchsize", batchSize.toString)
+      props.setProperty("socket_timeout", AppConfig.clickhouseSettings.socketTimeoutMs.toString)
+      props.setProperty("connect_timeout", connectionTimeout.toString)
 
       val source = new ClickHouseDataSource(url, props)
       dataSource = Some(source)
