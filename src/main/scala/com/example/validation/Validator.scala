@@ -2,7 +2,6 @@ package com.example.validation
 
 import com.example.config.AppConfig
 import com.example.util.MinioUtils
-import com.example.validation.model.{DQMetrics, Result}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.slf4j.LoggerFactory
@@ -11,8 +10,23 @@ object Validator {
   private val logger = LoggerFactory.getLogger(getClass)
 
   private def minPrice: Double = AppConfig.applicationConfig.validation.minPrice
+
   private def maxPrice: Double = AppConfig.applicationConfig.validation.maxPrice
+
   private def validEventTypes: Set[String] = AppConfig.applicationConfig.validation.validEventTypes.toSet
+
+  case class DQMetrics(
+                        totalRecords: Long,
+                        validRecords: Long,
+                        invalidRecords: Long,
+                        invalidReasons: Map[String, Long]
+                      )
+
+  case class Result(
+                     validRecords: DataFrame,
+                     invalidRecords: DataFrame,
+                     metrics: DQMetrics
+                   )
 
   def validateAndClean(df: DataFrame): Result = {
     import df.sparkSession.implicits._
@@ -107,34 +121,5 @@ object Validator {
 
     validated.unpersist()
     Result(validRecords, invalidRecords, metrics)
-  }
-
-  def saveInvalidRecords(
-                          invalidRecords: DataFrame,
-                          bucketName: String,
-                          path: String,
-                          format: String = "delta",
-                          autoOptimize: Boolean = false
-                        ): Unit = {
-    val invalidCount = invalidRecords.count()
-    if (invalidCount == 0) {
-      logger.info("No invalid records to save.")
-      return
-    }
-
-    try {
-      MinioUtils.writeDeltaTable(
-        df = invalidRecords,
-        bucketName = bucketName,
-        path = path,
-        saveMode = SaveMode.Append,
-        partitionColumns = Some(Seq("processing_timestamp")),
-        autoOptimize = autoOptimize
-      )
-      logger.info(s"Saved invalid records to $path (bucket=$bucketName, format=$format)")
-    } catch {
-      case e: Exception =>
-        logger.error(s"Failed to save invalid records to $path in bucket $bucketName", e)
-    }
   }
 }

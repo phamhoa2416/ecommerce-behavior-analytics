@@ -21,11 +21,7 @@ object BATCH {
   def main(args: Array[String]): Unit = {
     val spark = SparkUtils.createSparkSession("Batch")
 
-    val minioEndpoint = AppConfig.MINIO_ENDPOINT
-    val minioAccessKey = AppConfig.MINIO_ACCESS_KEY
-    val minioSecretKey = AppConfig.MINIO_SECRET_KEY
     val minioBucketName = AppConfig.MINIO_BUCKET_NAME
-    val minioPathStyleAccess = AppConfig.MINIO_PATH_STYLE_ACCESS
 
     val rawPath = AppConfig.MINIO_BASE_PATH
     val invalidPath = AppConfig.PIPELINE_BATCH_INVALID_PATH
@@ -39,7 +35,12 @@ object BATCH {
 
     try {
       RetryHandler.withRetry(
-        MinioUtils.configureMinIO(spark, minioEndpoint, minioAccessKey, minioSecretKey, minioPathStyleAccess),
+        MinioUtils.configureMinIO(
+          spark,
+          AppConfig.MINIO_ENDPOINT,
+          AppConfig.MINIO_ACCESS_KEY,
+          AppConfig.MINIO_SECRET_KEY,
+          AppConfig.MINIO_PATH_STYLE_ACCESS),
         name = "MinIO Configuration"
       ) match {
         case Success(_) => logger.info("MinIO configured successfully")
@@ -49,7 +50,10 @@ object BATCH {
       }
 
       RetryHandler.withRetry(
-        MinioUtils.checkBucketExists(minioEndpoint, minioAccessKey, minioSecretKey, minioBucketName),
+        MinioUtils.checkBucketExists(
+          AppConfig.MINIO_ENDPOINT,
+          AppConfig.MINIO_ACCESS_KEY,
+          AppConfig.MINIO_SECRET_KEY, minioBucketName),
         name = "MinIO Bucket Check/Create"
       ) match {
         case Success(_) => logger.info(s"MinIO bucket '$minioBucketName' is ready")
@@ -68,7 +72,7 @@ object BATCH {
         .option("subscribe", topic)
         .option("startingOffsets", "earliest")
         .load()
-        .filter(col("timestamp") > lit(lastProcessedTimestamp))
+//        .filter(col("timestamp") > lit(lastProcessedTimestamp))
 
       val recordCount = kafkaDf.count()
       logger.info(s"Records to process: $recordCount")

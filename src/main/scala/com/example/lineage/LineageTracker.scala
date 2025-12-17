@@ -8,8 +8,6 @@ import org.slf4j.LoggerFactory
 object LineageTracker {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  private val DefaultFormat = "delta"
-
   def log(
            spark: SparkSession,
            bucketName: String,

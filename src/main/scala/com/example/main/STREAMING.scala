@@ -74,105 +74,104 @@ object STREAMING {
       .foreachBatch { (batchDF: DataFrame, batchId: Long) =>
         if (batchDF.isEmpty) {
           logger.debug(s"[batch $batchId] Empty batch, skipping")
-          return
-        }
+        } else {
+          val cachedDf = batchDF.persist()
+          val batchCount = cachedDf.count()
+          logger.info(s"[batch $batchId] Processing $batchCount records")
 
-        val cachedDf = batchDF.persist()
-        val batchCount = cachedDf.count()
-        logger.info(s"[batch $batchId] Processing $batchCount records")
+          try {
+            val validationResult = Validator.validateAndClean(cachedDf)
+            logger.info(s"[batch $batchId] Valid: ${validationResult.metrics.validRecords}, " +
+              s"Invalid: ${validationResult.metrics.invalidRecords}")
 
-        try {
-          val validationResult = Validator.validateAndClean(cachedDf)
-          logger.info(s"[batch $batchId] Valid: ${validationResult.metrics.validRecords}, " +
-            s"Invalid: ${validationResult.metrics.invalidRecords}")
-
-          if (validationResult.metrics.invalidRecords > 0) {
-            DLQHandler.writeToDLQ(
-              records = validationResult.invalidRecords,
-              path = AppConfig.PIPELINE_STREAMING_INVALID_PATH,
-              bucketName = AppConfig.MINIO_BUCKET_NAME,
-              batchId = batchId,
-              reason = "validation_failed",
-              retryCount = 0
-            ) match {
-              case Success(_) => logger.debug(s"[batch $batchId] Invalid records sent to DLQ")
-              case Failure(ex) => logger.warn(s"[batch $batchId] Failed to write to DLQ: ${ex.getMessage}")
+            if (validationResult.metrics.invalidRecords > 0) {
+              DLQHandler.writeToDLQ(
+                records = validationResult.invalidRecords,
+                path = AppConfig.PIPELINE_STREAMING_INVALID_PATH,
+                bucketName = AppConfig.MINIO_BUCKET_NAME,
+                batchId = batchId,
+                reason = "validation_failed",
+                retryCount = 0
+              ) match {
+                case Success(_) => logger.debug(s"[batch $batchId] Invalid records sent to DLQ")
+                case Failure(ex) => logger.warn(s"[batch $batchId] Failed to write to DLQ: ${ex.getMessage}")
+              }
             }
-          }
 
-          val validCount = validationResult.metrics.validRecords
-          if (validCount > 0) {
-            RetryHandler.withRetry(
-              {
-                logger.info(s"[batch $batchId] Writing $validCount records to ClickHouse")
-                validationResult.validRecords.write
-                  .mode("append")
-                  .jdbc(
-                    AppConfig.CLICKHOUSE_URL,
-                    AppConfig.CLICKHOUSE_TABLE,
-                    ClickHouseUtils.getConnectionProperties
+            val validCount = validationResult.metrics.validRecords
+            if (validCount > 0) {
+              RetryHandler.withRetry(
+                {
+                  logger.info(s"[batch $batchId] Writing $validCount records to ClickHouse")
+                  validationResult.validRecords.write
+                    .mode("append")
+                    .jdbc(
+                      AppConfig.CLICKHOUSE_URL,
+                      AppConfig.CLICKHOUSE_TABLE,
+                      ClickHouseUtils.getConnectionProperties
+                    )
+                },
+                name = s"ClickHouse write (batch $batchId)"
+              ) match {
+                case Success(_) =>
+                  logger.info(s"[batch $batchId] Write succeeded")
+
+                  LineageTracker.log(
+                    spark = spark,
+                    bucketName = AppConfig.MINIO_BUCKET_NAME,
+                    lineagePath = AppConfig.PIPELINE_STREAMING_LINEAGE_PATH,
+                    pipeline = "streaming",
+                    batchId = batchId.toString,
+                    source = s"Kafka:${AppConfig.KAFKA_STREAM_TOPIC}",
+                    sink = s"ClickHouse:${AppConfig.CLICKHOUSE_TABLE}",
+                    metrics = Map(
+                      "total" -> validationResult.metrics.totalRecords,
+                      "valid" -> validationResult.metrics.validRecords,
+                      "invalid" -> validationResult.metrics.invalidRecords
+                    ),
+                    status = "success",
+                    mode = "stream"
                   )
-              },
-              name = s"ClickHouse write (batch $batchId)"
-            ) match {
-              case Success(_) =>
-                logger.info(s"[batch $batchId] Write succeeded")
+                case Failure(ex) =>
+                  logger.error(s"[batch $batchId] Write failed, sending to DLQ", ex)
 
-                LineageTracker.log(
-                  spark = spark,
-                  bucketName = AppConfig.MINIO_BUCKET_NAME,
-                  lineagePath = AppConfig.PIPELINE_STREAMING_LINEAGE_PATH,
-                  pipeline = "streaming",
-                  batchId = batchId.toString,
-                  source = s"Kafka:${AppConfig.KAFKA_STREAM_TOPIC}",
-                  sink = s"ClickHouse:${AppConfig.CLICKHOUSE_TABLE}",
-                  metrics = Map(
-                    "total" -> validationResult.metrics.totalRecords,
-                    "valid" -> validationResult.metrics.validRecords,
-                    "invalid" -> validationResult.metrics.invalidRecords
-                  ),
-                  status = "success",
-                  mode = "stream"
-                )
-              case Failure(ex) =>
-                logger.error(s"[batch $batchId] Write failed, sending to DLQ", ex)
+                  DLQHandler.writeToDLQ(
+                    records = validationResult.validRecords,
+                    path = AppConfig.PIPELINE_STREAMING_DLQ_PATH,
+                    bucketName = AppConfig.MINIO_BUCKET_NAME,
+                    batchId = batchId,
+                    reason = s"clickhouse_write_failed: ${ex.getMessage}",
+                    retryCount = 0
+                  ) match {
+                    case Success(_) => logger.info(s"[batch $batchId] Failed records sent to DLQ")
+                    case Failure(dlqEx) => logger.error(s"[batch $batchId] CRITICAL: DLQ write failed", dlqEx)
+                  }
 
-                DLQHandler.writeToDLQ(
-                  records = validationResult.validRecords,
-                  path = AppConfig.PIPELINE_STREAMING_DLQ_PATH,
-                  bucketName = AppConfig.MINIO_BUCKET_NAME,
-                  batchId = batchId,
-                  reason = s"clickhouse_write_failed: ${ex.getMessage}",
-                  retryCount = 0
-                ) match {
-                  case Success(_) => logger.info(s"[batch $batchId] Failed records sent to DLQ")
-                  case Failure(dlqEx) => logger.error(s"[batch $batchId] CRITICAL: DLQ write failed", dlqEx)
-                }
-
-                LineageTracker.log(
-                  spark = spark,
-                  bucketName = AppConfig.MINIO_BUCKET_NAME,
-                  lineagePath = AppConfig.PIPELINE_STREAMING_LINEAGE_PATH,
-                  pipeline = "streaming",
-                  batchId = batchId.toString,
-                  source = s"Kafka:${AppConfig.KAFKA_STREAM_TOPIC}",
-                  sink = s"ClickHouse:${AppConfig.CLICKHOUSE_TABLE}",
-                  metrics = Map(
-                    "total" -> validationResult.metrics.totalRecords,
-                    "valid" -> validationResult.metrics.validRecords,
-                    "invalid" -> validationResult.metrics.invalidRecords
-                  ),
-                  status = "failed",
-                  mode = "stream",
-                  message = ex.getMessage
-                )
+                  LineageTracker.log(
+                    spark = spark,
+                    bucketName = AppConfig.MINIO_BUCKET_NAME,
+                    lineagePath = AppConfig.PIPELINE_STREAMING_LINEAGE_PATH,
+                    pipeline = "streaming",
+                    batchId = batchId.toString,
+                    source = s"Kafka:${AppConfig.KAFKA_STREAM_TOPIC}",
+                    sink = s"ClickHouse:${AppConfig.CLICKHOUSE_TABLE}",
+                    metrics = Map(
+                      "total" -> validationResult.metrics.totalRecords,
+                      "valid" -> validationResult.metrics.validRecords,
+                      "invalid" -> validationResult.metrics.invalidRecords
+                    ),
+                    status = "failed",
+                    mode = "stream",
+                    message = ex.getMessage
+                  )
+              }
+            } else {
+              logger.info(s"[batch $batchId] No valid records to write")
             }
-          } else {
-            logger.info(s"[batch $batchId] No valid records to write")
-          }
 
-        } finally {
-          cachedDf.unpersist()
+          } finally {
+            cachedDf.unpersist()
+          }
         }
       }
       .start()
