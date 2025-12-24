@@ -74,7 +74,7 @@ spec:
           resources:
             requests:
               storage: 6Gi
-          storageClassName: standard
+          storageClassName: microk8s-hostpath
 
     serviceTemplates:
       - name: clickhouse-service

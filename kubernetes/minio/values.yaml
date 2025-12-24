@@ -20,6 +20,6 @@ spec:
           resources:
             requests:
               storage: 3Gi
-          storageClassName: standard
+          storageClassName: microk8s-hostpath
   users:
     - name: storage-user
