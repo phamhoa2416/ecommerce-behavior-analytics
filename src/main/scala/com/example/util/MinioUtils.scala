@@ -15,15 +15,38 @@ import org.slf4j.LoggerFactory
 
 import scala.util.{Failure, Try}
 
-//noinspection ScalaUnusedSymbol,ScalaWeakerAccess
+/**
+ * Utility object for MinIO/S3 operations with Delta Lake tables.
+ * Provides functions for configuring MinIO, reading/writing Delta tables,
+ * managing ML models, and optimizing Delta table performance.
+ */
 object MinioUtils {
   private val logger = LoggerFactory.getLogger(getClass)
 
+  /**
+   * Validates that bucket name and path are not empty.
+   * 
+   * @param bucketName The bucket name to validate
+   * @param path The path to validate
+   * @throws IllegalArgumentException if bucket name or path is empty
+   */
   private def validate(bucketName: String, path: String): Unit = {
     require(bucketName.nonEmpty, "Bucket name must be provided")
     require(path.nonEmpty, "Path must be provided")
   }
 
+  /**
+   * Configures Spark's Hadoop configuration for MinIO/S3 access.
+   * 
+   * This function sets up the S3A filesystem to work with MinIO by configuring
+   * endpoint, credentials, SSL settings, and connection parameters.
+   * 
+   * @param spark The SparkSession to configure
+   * @param endpoint The MinIO endpoint URL (e.g., "http://localhost:9000")
+   * @param accessKey The MinIO access key
+   * @param secretKey The MinIO secret key
+   * @param pathStyleAccess Whether to use path-style access ("true" or "false")
+   */
   def configureMinIO(
                       spark: SparkSession,
                       endpoint: String,
@@ -31,6 +54,7 @@ object MinioUtils {
                       secretKey: String,
                       pathStyleAccess: String
                     ): Unit = {
+    // Configure Hadoop filesystem for S3A/MinIO access
     val hadoopConf = spark.sparkContext.hadoopConfiguration
 
     hadoopConf.set("fs.s3a.endpoint", endpoint)
@@ -44,6 +68,19 @@ object MinioUtils {
     hadoopConf.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
   }
 
+  /**
+   * Checks if a MinIO bucket exists, creating it if it doesn't.
+   * 
+   * This function uses the AWS S3 client to interact with MinIO, verifying
+   * bucket existence and creating it if necessary.
+   * 
+   * @param endpoint The MinIO endpoint URL
+   * @param accessKey The MinIO access key
+   * @param secretKey The MinIO secret key
+   * @param bucket The bucket name to check/create
+   * @return Success(()) if bucket exists or is created successfully,
+   *         Failure(exception) if an error occurs
+   */
   def checkBucketExists(
                          endpoint: String,
                          accessKey: String,
@@ -60,6 +97,7 @@ object MinioUtils {
         .withCredentials(new AWSStaticCredentialsProvider(credentials))
         .build()
 
+      // Check if bucket exists by attempting to list objects
       val bucketExists = Try(s3Client.listObjects(bucket)).isSuccess
 
       if (!bucketExists) {
@@ -76,6 +114,15 @@ object MinioUtils {
     }
   }
 
+  /**
+   * Reads a Delta table from MinIO storage.
+   * 
+   * @param spark The SparkSession instance
+   * @param bucketName The MinIO bucket name containing the Delta table
+   * @param path The path within the bucket where the Delta table is stored
+   * @return DataFrame containing the data from the Delta table
+   * @throws Exception if the table cannot be read or path is invalid
+   */
   def readDeltaTable(
                       spark: SparkSession,
                       bucketName: String,
@@ -99,44 +146,21 @@ object MinioUtils {
     }
   }
 
-  def readDeltaTableWithTimeTravel(
-                                    spark: SparkSession,
-                                    bucketName: String,
-                                    path: String,
-                                    version: Option[Long] = None,
-                                    timestamp: Option[String] = None
-                                  ): DataFrame = {
-    validate(bucketName, path)
-
-    val fullPath = s"s3a://$bucketName/$path"
-
-    try {
-      val baseReader = spark.read.format("delta")
-
-      val reader = (version, timestamp) match {
-        case (Some(v), _) =>
-          logger.info(s"Reading Delta table at version $v: $fullPath")
-          baseReader.option("versionAsOf", v)
-
-        case (None, Some(ts)) =>
-          logger.info(s"Reading Delta table at timestamp $ts: $fullPath")
-          baseReader.option("timestampAsOf", ts)
-
-        case (None, None) =>
-          logger.info(s"Reading latest version of Delta table: $fullPath")
-          baseReader
-      }
-
-      val df = reader.load(fullPath)
-      logger.info(s"Successfully read Delta table.")
-      df
-    } catch {
-      case ex: Exception =>
-        logger.error(s"Failed to read Delta table with time travel: $fullPath", ex)
-        throw ex
-    }
-  }
-
+  /**
+   * Writes a DataFrame to MinIO as a Delta table.
+   * 
+   * This function supports partitioning, repartitioning, and optional automatic optimization
+   * of the Delta table after writing.
+   * 
+   * @param df The DataFrame to write
+   * @param bucketName The MinIO bucket name where the Delta table will be stored
+   * @param path The path within the bucket for storing the Delta table
+   * @param saveMode The save mode: Append, Overwrite, ErrorIfExists, or Ignore (default: Append)
+   * @param partitionColumns Optional sequence of column names to partition the table by
+   * @param repartitionColumns Optional sequence of column names to repartition data before writing
+   * @param autoOptimize If true, automatically optimizes the Delta table after writing (default: false)
+   * @throws Exception if writing fails or path is invalid
+   */
   def writeDeltaTable(
                        df: DataFrame,
                        bucketName: String,
@@ -154,6 +178,7 @@ object MinioUtils {
     try {
       var payload = df
 
+      // Repartition data if specified (useful for optimizing write performance)
       repartitionColumns match {
         case Some(cols) if cols.nonEmpty =>
           logger.info(s"Repartitioning data by: ${cols.mkString(", ")}")
@@ -165,6 +190,7 @@ object MinioUtils {
         .format("delta")
         .mode(saveMode)
 
+      // Apply partitioning if specified (improves query performance for filtered queries)
       partitionColumns match {
         case Some(cols) if cols.nonEmpty =>
           logger.info(s"Partitioning data by: ${cols.mkString(", ")}")
@@ -187,6 +213,21 @@ object MinioUtils {
     }
   }
 
+  /**
+   * Performs an upsert operation (merge) on a Delta table.
+   * 
+   * This function implements the Delta Lake merge operation, which updates existing rows
+   * that match the merge condition and inserts new rows that don't match.
+   * 
+   * @param spark The SparkSession instance
+   * @param bucketName The MinIO bucket name containing the target Delta table
+   * @param path The path within the bucket where the target Delta table is stored
+   * @param sourceDataFrame The source DataFrame containing data to merge
+   * @param mergeCondition SQL condition for matching rows (e.g., "target.id = source.id")
+   * @param updateCondition Optional SQL condition for when to update matched rows
+   * @param insertCondition Optional SQL condition for when to insert non-matched rows
+   * @throws Exception if merge fails or path is invalid
+   */
   def mergeDeltaTable(
                        spark: SparkSession,
                        bucketName: String,
@@ -208,7 +249,7 @@ object MinioUtils {
         .as("target")
         .merge(sourceDataFrame.as("source"), mergeCondition)
 
-      // Update clause
+      // Configure update clause: update matched rows based on condition
       val updateClause = updateCondition match {
         case Some(condition) =>
           logger.info(s"Update condition: $condition")
@@ -218,7 +259,7 @@ object MinioUtils {
           mergeBuilder.whenMatched().updateAll()
       }
 
-      // Insert clause
+      // Configure insert clause: insert non-matched rows based on condition
       val insertClause = insertCondition match {
         case Some(condition) =>
           logger.info(s"Insert condition: $condition")
@@ -238,6 +279,18 @@ object MinioUtils {
     }
   }
 
+  /**
+   * Optimizes a Delta table using bin packing or Z-ordering.
+   * 
+   * This private function is called internally by writeDeltaTable when autoOptimize is enabled.
+   * Optimization improves query performance by compacting small files and organizing data.
+   * 
+   * @param spark The SparkSession instance
+   * @param bucketName The MinIO bucket name containing the Delta table
+   * @param path The path within the bucket where the Delta table is stored
+   * @param zOrderColumns Optional sequence of columns for Z-ordering (alternative to bin packing)
+   * @param whereClause Optional WHERE clause to optimize only a subset of data
+   */
   private def optimizeDeltaTable(
                                   spark: SparkSession,
                                   bucketName: String,
@@ -260,6 +313,7 @@ object MinioUtils {
         optimizer = optimizer.where(whereClause.get)
       }
 
+      // Apply Z-ordering if specified, otherwise use bin packing compaction
       zOrderColumns match {
         case Some(cols) if cols.nonEmpty =>
           logger.info(s"Applying Z-ORDER BY: ${cols.mkString(", ")}")
@@ -277,6 +331,18 @@ object MinioUtils {
     }
   }
 
+  /**
+   * Vacuums a Delta table to remove old files that are no longer needed.
+   * 
+   * Vacuuming removes files that are older than the retention period and are no longer
+   * referenced by the Delta table's transaction log. This helps reduce storage costs.
+   * 
+   * @param spark The SparkSession instance
+   * @param bucketName The MinIO bucket name containing the Delta table
+   * @param path The path within the bucket where the Delta table is stored
+   * @param retentionHours Files older than this many hours will be deleted (default: 168 = 7 days)
+   * @throws Exception if vacuum fails or path is invalid
+   */
   def vacuumDeltaTable(
                         spark: SparkSession,
                         bucketName: String,
@@ -299,6 +365,19 @@ object MinioUtils {
     }
   }
 
+  /**
+   * Saves a Spark ML model to MinIO storage.
+   * 
+   * This generic function works with any ML model that implements MLWritable,
+   * such as ALSModel, PipelineModel, or StringIndexerModel.
+   * 
+   * @param model The ML model to save (must implement MLWritable)
+   * @param bucketName The MinIO bucket name where the model will be stored
+   * @param path The path within the bucket for storing the model
+   * @param overwrite If true, overwrites existing model at the path (default: true)
+   * @tparam T The type of the ML model (must extend MLWritable)
+   * @throws Exception if saving fails or path is invalid
+   */
   def saveMLModel[T <: MLWritable](
                                     model: T,
                                     bucketName: String,
@@ -321,6 +400,19 @@ object MinioUtils {
     }
   }
 
+  /**
+   * Loads a Spark ML model from MinIO storage.
+   * 
+   * This generic function works with any ML model that implements MLReadable,
+   * such as ALSModel, PipelineModel, or StringIndexerModel.
+   * 
+   * @param bucketName The MinIO bucket name containing the model
+   * @param path The path within the bucket where the model is stored
+   * @param loader The MLReadable loader for the specific model type
+   * @tparam T The type of the ML model to load
+   * @return The loaded ML model
+   * @throws Exception if loading fails or path is invalid
+   */
   def loadMLModel[T](
                       bucketName: String,
                       path: String,
@@ -343,6 +435,16 @@ object MinioUtils {
   }
 
 
+  /**
+   * Saves a StringIndexerModel to MinIO storage.
+   * 
+   * This is a convenience wrapper around saveMLModel specifically for StringIndexerModel.
+   * 
+   * @param model The StringIndexerModel to save
+   * @param bucketName The MinIO bucket name where the model will be stored
+   * @param path The path within the bucket for storing the model
+   * @param overwrite If true, overwrites existing model at the path (default: true)
+   */
   def saveIndexerModel(
                         model: StringIndexerModel,
                         bucketName: String,
@@ -354,6 +456,15 @@ object MinioUtils {
     saveMLModel(model, bucketName, path, overwrite)
   }
 
+  /**
+   * Loads a StringIndexerModel from MinIO storage.
+   * 
+   * This is a convenience wrapper around loadMLModel specifically for StringIndexerModel.
+   * 
+   * @param bucketName The MinIO bucket name containing the model
+   * @param path The path within the bucket where the model is stored
+   * @return The loaded StringIndexerModel
+   */
   def loadIndexerModel(
                         bucketName: String,
                         path: String
@@ -361,6 +472,15 @@ object MinioUtils {
     loadMLModel(bucketName, path, StringIndexerModel)
   }
 
+  /**
+   * Loads an ALSModel from MinIO storage.
+   * 
+   * This is a convenience wrapper around loadMLModel specifically for ALSModel.
+   * 
+   * @param bucketName The MinIO bucket name containing the model
+   * @param path The path within the bucket where the model is stored
+   * @return The loaded ALSModel
+   */
   def loadALSModel(
                     bucketName: String,
                     path: String
@@ -368,6 +488,15 @@ object MinioUtils {
     loadMLModel(bucketName, path, ALSModel)
   }
 
+  /**
+   * Loads a PipelineModel (classification model) from MinIO storage.
+   * 
+   * This is a convenience wrapper around loadMLModel specifically for PipelineModel.
+   * 
+   * @param bucketName The MinIO bucket name containing the model
+   * @param path The path within the bucket where the model is stored
+   * @return The loaded PipelineModel
+   */
   def loadClassificationModel(
                                bucketName: String,
                                path: String

@@ -6,9 +6,33 @@ import org.slf4j.LoggerFactory
 import scala.collection.JavaConverters._
 import scala.util.Try
 
+/**
+ * Centralized application configuration management.
+ * 
+ * This object loads configuration from environment variables and configuration files,
+ * with environment variables taking precedence. Supports both development and production
+ * environments through the ENV_JOB_RUN environment variable.
+ * 
+ * Configuration is loaded from:
+ * - Environment variables (highest priority)
+ * - application.prod.conf (when ENV_JOB_RUN=prod)
+ * - application.dev.conf (default)
+ * 
+ * Provides type-safe configuration through case classes and maintains backward compatibility
+ * through legacy field accessors.
+ */
 object AppConfig {
   private val logger = LoggerFactory.getLogger(getClass)
 
+  /**
+   * Kafka connection and topic configuration.
+   * 
+   * @param bootstrapServers Comma-separated list of Kafka broker addresses
+   * @param batchTopic Kafka topic name for batch processing
+   * @param streamTopic Kafka topic name for streaming processing
+   * @param checkpointLocation Path for Spark checkpoint directory
+   * @param startingOffsets Starting offset strategy (e.g., "earliest", "latest", or JSON)
+   */
   final case class KafkaSettings(
     bootstrapServers: String,
     batchTopic: String,
@@ -17,6 +41,16 @@ object AppConfig {
     startingOffsets: String,
   )
 
+  /**
+   * MinIO/S3 storage configuration.
+   * 
+   * @param endpoint MinIO server endpoint URL
+   * @param accessKey MinIO access key for authentication
+   * @param secretKey MinIO secret key for authentication
+   * @param bucketName Default bucket name for data storage
+   * @param basePath Base path prefix within the bucket
+   * @param pathStyleAccess Whether to use path-style access ("true" or "false")
+   */
   final case class MinioSettings(
     endpoint: String,
     accessKey: String,
@@ -26,6 +60,18 @@ object AppConfig {
     pathStyleAccess: String
   )
 
+  /**
+   * ClickHouse database connection configuration.
+   * 
+   * @param url JDBC connection URL for ClickHouse
+   * @param user Database username
+   * @param password Database password
+   * @param table Default table name for operations
+   * @param batchSize Batch size for bulk insert operations
+   * @param maxConnections Maximum number of connections in the pool (default: 10)
+   * @param connectionTimeoutMs Connection timeout in milliseconds (default: 30000)
+   * @param socketTimeoutMs Socket timeout in milliseconds (default: 30000)
+   */
   final case class ClickhouseSettings(
     url: String,
     user: String,
@@ -37,6 +83,15 @@ object AppConfig {
     socketTimeoutMs: Int = 30000
   )
 
+  /**
+   * Spark application configuration.
+   * 
+   * @param master Spark master URL (e.g., "local[*]", "yarn", "spark://host:port")
+   * @param shufflePartitions Number of partitions for shuffle operations
+   * @param timestampPattern Pattern for parsing timestamp strings
+   * @param timezone Timezone for timestamp operations
+   * @param watermarkDuration Watermark duration for streaming (e.g., "5 minutes")
+   */
   final case class SparkSettings(
     master: String,
     shufflePartitions: Int,
@@ -45,6 +100,17 @@ object AppConfig {
     watermarkDuration: String
   )
 
+  /**
+   * Data pipeline path configuration for invalid records, DLQ, and lineage.
+   * 
+   * @param batchInvalidPath Path for invalid batch records
+   * @param batchDlqPath Path for batch dead letter queue
+   * @param batchLineagePath Path for batch data lineage tracking
+   * @param streamingInvalidPath Path for invalid streaming records
+   * @param streamingDlqPath Path for streaming dead letter queue
+   * @param streamingLineagePath Path for streaming data lineage tracking
+   * @param dedupKeyColumns Column names used for deduplication (default: event_time, user_id, product_id, event_type)
+   */
   final case class PipelineSettings(
     batchInvalidPath: String = "batch/invalid",
     batchDlqPath: String = "batch/dlq",
@@ -55,18 +121,44 @@ object AppConfig {
     dedupKeyColumns: Seq[String] = Seq("event_time", "user_id", "product_id", "event_type")
   )
 
+  /**
+   * Data validation rules configuration.
+   * 
+   * @param minPrice Minimum valid price value (default: 0.01)
+   * @param maxPrice Maximum valid price value (default: 1000000.0)
+   * @param validEventTypes List of valid event type values (default: view, cart, purchase, remove_from_cart)
+   */
   final case class ValidationSettings(
     minPrice: Double = 0.01,
     maxPrice: Double = 1000000.0,
     validEventTypes: Seq[String] = Seq("view", "cart", "purchase", "remove_from_cart")
   )
 
+  /**
+   * Dead Letter Queue (DLQ) configuration.
+   * 
+   * @param queueSize Maximum size of the DLQ buffer (default: 10000)
+   * @param offerTimeoutSeconds Timeout for offering items to the queue in seconds (default: 5)
+   * @param pollTimeoutSeconds Timeout for polling items from the queue in seconds (default: 1)
+   */
   final case class DLQSettings(
     queueSize: Int = 10000,
     offerTimeoutSeconds: Int = 5,
     pollTimeoutSeconds: Int = 1
   )
 
+  /**
+   * Event weight configuration for ALS (Alternating Least Squares) recommendation model.
+   * 
+   * Different event types are weighted differently to reflect their importance
+   * in user-item interactions for collaborative filtering.
+   * 
+   * @param view Weight for view events
+   * @param cart Weight for cart events
+   * @param removeFromCart Weight for remove_from_cart events (typically negative)
+   * @param purchase Weight for purchase events (typically highest)
+   * @param viewCap Maximum weight cap for view events to prevent over-weighting
+   */
   final case class ALSEventWeight(
     view: Double,
     cart: Double,
@@ -75,6 +167,18 @@ object AppConfig {
     viewCap: Double,
   )
 
+  /**
+   * ALS (Alternating Least Squares) recommendation model configuration.
+   * 
+   * @param base_path Base path in MinIO for storing ALS model artifacts
+   * @param rank Number of latent factors in the ALS model
+   * @param iter Maximum number of iterations for ALS training
+   * @param regParam Regularization parameter to prevent overfitting
+   * @param alpha Implicit feedback confidence scaling parameter
+   * @param K Number of top recommendations to evaluate (top-K)
+   * @param blockFactor Block size for ALS computation (for performance tuning)
+   * @param eventWeight Event weight configuration for different interaction types
+   */
   final case class ALSConfig(
     base_path: String,
     rank: Int,
@@ -86,6 +190,14 @@ object AppConfig {
     eventWeight: ALSEventWeight
   )
 
+  /**
+   * Event weight configuration for classification model.
+   * 
+   * @param view Weight for view events
+   * @param cart Weight for cart events
+   * @param removeFromCart Weight for remove_from_cart events
+   * @param purchase Weight for purchase events
+   */
   final case class ClsEventWeight(
     view: Double,
     cart: Double,
@@ -93,6 +205,20 @@ object AppConfig {
     purchase: Double
   )
 
+  /**
+   * Classification model (Random Forest) configuration.
+   * 
+   * @param base_path Base path in MinIO for storing classification model artifacts
+   * @param eventWeight Event weight configuration for different interaction types
+   * @param trees Number of trees in the Random Forest ensemble
+   * @param maxDepth Maximum depth of each decision tree
+   * @param minInstancesPerNode Minimum number of instances required at a leaf node
+   * @param maxBins Maximum number of bins for discretizing continuous features
+   * @param subsamplingRate Fraction of training data used for each tree (bootstrap sampling)
+   * @param featureSubsetStrategy Strategy for selecting features at each split
+   * @param useTopNBucketing Whether to use top-N bucketing for categorical features
+   * @param topNCategories Number of top categories to keep when bucketing is enabled
+   */
   final case class ClsConfig(
     base_path: String,
     eventWeight: ClsEventWeight,
@@ -106,12 +232,33 @@ object AppConfig {
     topNCategories: Int,
   )
 
+  /**
+   * Spark ML (Machine Learning) configuration container.
+   * 
+   * @param timeDecayFactor Time decay factor for weighting recent events more heavily
+   * @param als ALS recommendation model configuration
+   * @param cls Classification model configuration
+   */
   final case class SparkMLConfig(
     timeDecayFactor: Double,
     als: ALSConfig,
     cls: ClsConfig
   )
 
+  /**
+   * Complete application configuration container.
+   * 
+   * Aggregates all configuration settings into a single type-safe structure.
+   * 
+   * @param kafka Kafka configuration
+   * @param minio MinIO storage configuration
+   * @param clickhouse ClickHouse database configuration
+   * @param spark Spark application configuration
+   * @param ml Machine learning model configurations
+   * @param pipeline Pipeline path configurations (default: PipelineSettings())
+   * @param validation Data validation rules (default: ValidationSettings())
+   * @param dlq Dead letter queue settings (default: DLQSettings())
+   */
   final case class ApplicationConfig(
     kafka: KafkaSettings,
     minio: MinioSettings,
@@ -123,9 +270,16 @@ object AppConfig {
     dlq: DLQSettings = DLQSettings()
   )
 
+  // Determine environment (prod or dev) from environment variable
   private val envStats: String = sys.env.getOrElse("ENV_JOB_RUN", "env")
   logger.info(s"Loading configuration for environment: $envStats")
 
+  /**
+   * Loads configuration file based on environment.
+   * 
+   * Loads application.prod.conf for production environment (ENV_JOB_RUN=prod),
+   * otherwise loads application.dev.conf for development.
+   */
   val config: Config = {
     val fileName = if (envStats == "prod") "application.prod.conf" else "application.dev.conf"
     Try(ConfigFactory.load(fileName)).recover {
@@ -135,6 +289,7 @@ object AppConfig {
     }.get
   }
 
+  // Extract configuration sections from the main config
   private val kafkaConfig = config.getConfig("kafka")
   private val minioConfig = config.getConfig("minio")
   private val clickhouseConfig = config.getConfig("clickhouse")
@@ -145,10 +300,19 @@ object AppConfig {
   private val clsConfig = sparkMlConfig.getConfig("classification")
   private val clsEventWeightConfig = clsConfig.getConfig("weights")
 
+  // Optional configuration sections (use empty config if not present)
   private val pipelineConfig = Try(config.getConfig("pipeline")).getOrElse(ConfigFactory.empty())
   private val validationConfig = Try(config.getConfig("validation")).getOrElse(ConfigFactory.empty())
   private val dlqConfig = Try(config.getConfig("dlq")).getOrElse(ConfigFactory.empty())
 
+  /**
+   * Validates that a configuration value is not null or empty.
+   * 
+   * @param value The configuration value to validate
+   * @param key The configuration key name (for error messages)
+   * @return Trimmed value if valid
+   * @throws IllegalArgumentException if value is null or empty
+   */
   private def requireNonEmpty(value: String, key: String): String = {
     if (value == null || value.trim.isEmpty) {
       throw new IllegalArgumentException(s"Configuration value for '$key' must not be empty")
@@ -156,31 +320,74 @@ object AppConfig {
     value.trim
   }
 
+  /**
+   * Resolves configuration value from environment variable or config file.
+   * 
+   * Environment variables take precedence over configuration file values.
+   * The resolved value must be non-empty.
+   * 
+   * @param envKey Environment variable key to check first
+   * @param defaultValue Lazy-evaluated default value from config file
+   * @return Resolved configuration value (trimmed)
+   * @throws IllegalArgumentException if resolved value is empty
+   */
   private def envOrConfig(envKey: String, defaultValue: => String): String = {
     val resolved = sys.env.get(envKey).filter(_.nonEmpty).getOrElse(defaultValue)
     requireNonEmpty(resolved, envKey)
   }
 
+  /**
+   * Resolves integer configuration value from environment variable or config file.
+   * 
+   * @param envKey Environment variable key to check first
+   * @param defaultValue Default value from config file if env var not set or invalid
+   * @return Resolved integer value
+   */
   private def envOrConfigInt(envKey: String, defaultValue: => Int): Int = {
     sys.env.get(envKey).flatMap(v => Try(v.toInt).toOption)
       .getOrElse(defaultValue)
   }
 
+  /**
+   * Resolves double configuration value from environment variable or config file.
+   * 
+   * @param envKey Environment variable key to check first
+   * @param defaultValue Default value from config file if env var not set or invalid
+   * @return Resolved double value
+   */
   private def envOrConfigDouble(envKey: String, defaultValue: => Double): Double = {
     sys.env.get(envKey).flatMap(v => Try(v.toDouble).toOption)
       .getOrElse(defaultValue)
   }
 
+  /**
+   * Resolves sequence of strings from environment variable or config file.
+   * 
+   * Environment variable should be comma-separated values. If not set, uses
+   * the default sequence from config file.
+   * 
+   * @param envKey Environment variable key to check first
+   * @param defaultValue Default sequence from config file
+   * @return Resolved sequence of strings
+   */
   private def envOrConfigSeq(envKey: String, defaultValue: => Seq[String]): Seq[String] = {
     sys.env.get(envKey).map(_.split(",").map(_.trim).toSeq)
       .getOrElse(defaultValue)
   }
 
+  /**
+   * Resolves boolean configuration value from environment variable or config file.
+   * 
+   * @param envKey Environment variable key to check first
+   * @param defaultValue Default value from config file if env var not set or invalid
+   * @return Resolved boolean value
+   */
   private def envOrConfigBoolean(envKey: String, defaultValue: => Boolean): Boolean = {
     sys.env.get(envKey).flatMap(v => Try(v.toBoolean).toOption)
       .getOrElse(defaultValue)
   }
 
+  // Build configuration objects from environment variables and config files
   private val kafkaSettings: KafkaSettings = KafkaSettings(
     bootstrapServers = envOrConfig("KAFKA_BOOTSTRAP_SERVERS", kafkaConfig.getString("bootstrap_servers")),
     batchTopic = envOrConfig("KAFKA_TOPIC", kafkaConfig.getString("batch_topic")),
@@ -202,6 +409,12 @@ object AppConfig {
     pathStyleAccess = envOrConfig("MINIO_PATH_STYLE_ACCESS", minioConfig.getString("path_style_access"))
   )
 
+  /**
+   * ClickHouse settings (publicly accessible for connection initialization).
+   * 
+   * This is exposed as a public value to allow other modules to initialize
+   * ClickHouse connections using these settings.
+   */
   val clickhouseSettings: ClickhouseSettings = ClickhouseSettings(
     url = envOrConfig("CLICKHOUSE_JDBC_URL", clickhouseConfig.getString("jdbc_url")),
     user = envOrConfig("CLICKHOUSE_USER", clickhouseConfig.getString("user")),
@@ -262,13 +475,26 @@ object AppConfig {
     )
   )
 
-  // Validate topNCategories + 1 <= maxBins only when bucketing is enabled
+  /**
+   * Validates classification model configuration constraints.
+   * 
+   * When top-N bucketing is enabled, topNCategories + 1 must be <= maxBins
+   * to accommodate the "other" category bucket in addition to the top N categories.
+   */
   if (sparkMlSettings.cls.useTopNBucketing) {
     require(sparkMlSettings.cls.topNCategories + 1 <= sparkMlSettings.cls.maxBins,
       s"topNCategories (${sparkMlSettings.cls.topNCategories}) + 1 must be <= maxBins (${sparkMlSettings.cls.maxBins}) to accommodate 'other' bucket")
   }
 
-  // Backwards compatible fields
+  /**
+   * Backward compatibility: Legacy field accessors.
+   * 
+   * These fields maintain backward compatibility with code that directly
+   * accesses AppConfig fields instead of using the structured configuration objects.
+   * New code should prefer using the case class instances (e.g., kafkaSettings).
+   */
+  
+  // Kafka settings
   val KAFKA_BOOTSTRAP_SERVERS: String = kafkaSettings.bootstrapServers
   val KAFKA_BATCH_TOPIC: String = kafkaSettings.batchTopic
   val KAFKA_STREAM_TOPIC: String = kafkaSettings.streamTopic
@@ -358,6 +584,7 @@ object AppConfig {
       Try(dlqConfig.getInt("poll_timeout_seconds")).getOrElse(1))
   )
 
+  // Pipeline paths (prefixed with MinIO base path)
   val PIPELINE_BATCH_INVALID_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchInvalidPath}"
   val PIPELINE_BATCH_DLQ_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchDlqPath}"
   val PIPELINE_BATCH_LINEAGE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchLineagePath}"
@@ -365,6 +592,13 @@ object AppConfig {
   val PIPELINE_STREAMING_DLQ_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingDlqPath}"
   val PIPELINE_STREAMING_LINEAGE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingLineagePath}"
 
+  /**
+   * Complete application configuration object.
+   * 
+   * This is the main entry point for accessing all configuration settings
+   * in a type-safe, structured manner. Use this instead of individual fields
+   * for better maintainability and type safety.
+   */
   val applicationConfig: ApplicationConfig =
     ApplicationConfig(
       kafkaSettings,

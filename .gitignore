@@ -31,3 +31,5 @@ logs/
 !/deploy/*.jar
 
 /data
+
+*.csv
