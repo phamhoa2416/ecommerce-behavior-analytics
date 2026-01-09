@@ -101,23 +101,17 @@ object AppConfig {
   )
 
   /**
-   * Data pipeline path configuration for invalid records, DLQ, and lineage.
+   * Data pipeline path configuration for Medallion Architecture zones.
    * 
-   * @param batchInvalidPath Path for invalid batch records
-   * @param batchDlqPath Path for batch dead letter queue
-   * @param batchLineagePath Path for batch data lineage tracking
-   * @param streamingInvalidPath Path for invalid streaming records
-   * @param streamingDlqPath Path for streaming dead letter queue
-   * @param streamingLineagePath Path for streaming data lineage tracking
+   * @param rawZonePath Path for Raw Zone (Bronze) - stores raw ingested data
+   * @param workingZonePath Path for Working Zone (Silver) - stores cleaned/validated data
+   * @param goldZonePath Path for Gold Zone - stores aggregated/curated data
    * @param dedupKeyColumns Column names used for deduplication (default: event_time, user_id, product_id, event_type)
    */
   final case class PipelineSettings(
-    batchInvalidPath: String = "batch/invalid",
-    batchDlqPath: String = "batch/dlq",
-    batchLineagePath: String = "lineage",
-    streamingInvalidPath: String = "streaming/invalid",
-    streamingDlqPath: String = "streaming/dlq",
-    streamingLineagePath: String = "streaming/lineage",
+    rawZonePath: String = "raw_zone",
+    workingZonePath: String = "working_zone",
+    goldZonePath: String = "gold_zone",
     dedupKeyColumns: Seq[String] = Seq("event_time", "user_id", "product_id", "event_type")
   )
 
@@ -550,18 +544,12 @@ object AppConfig {
   val SPARK_ML_CLS_TOP_N_CATEGORIES: Int = sparkMlSettings.cls.topNCategories
 
   private val pipelineSettings: PipelineSettings = PipelineSettings(
-    batchInvalidPath = envOrConfig("PIPELINE_BATCH_INVALID_PATH",
-      Try(pipelineConfig.getString("batch_invalid_path")).getOrElse("batch/invalid")),
-    batchDlqPath = envOrConfig("PIPELINE_BATCH_DLQ_PATH",
-      Try(pipelineConfig.getString("batch_dlq_path")).getOrElse("batch/dlq")),
-    batchLineagePath = envOrConfig("PIPELINE_BATCH_LINEAGE_PATH",
-      Try(pipelineConfig.getString("batch_lineage_path")).getOrElse("lineage")),
-    streamingInvalidPath = envOrConfig("PIPELINE_STREAMING_INVALID_PATH",
-      Try(pipelineConfig.getString("streaming_invalid_path")).getOrElse("streaming/invalid")),
-    streamingDlqPath = envOrConfig("PIPELINE_STREAMING_DLQ_PATH",
-      Try(pipelineConfig.getString("streaming_dlq_path")).getOrElse("streaming/dlq")),
-    streamingLineagePath = envOrConfig("PIPELINE_STREAMING_LINEAGE_PATH",
-      Try(pipelineConfig.getString("streaming_lineage_path")).getOrElse("streaming/lineage")),
+    rawZonePath = envOrConfig("PIPELINE_RAW_ZONE_PATH",
+      Try(pipelineConfig.getString("raw_zone_path")).getOrElse("raw_zone")),
+    workingZonePath = envOrConfig("PIPELINE_WORKING_ZONE_PATH",
+      Try(pipelineConfig.getString("working_zone_path")).getOrElse("working_zone")),
+    goldZonePath = envOrConfig("PIPELINE_GOLD_ZONE_PATH",
+      Try(pipelineConfig.getString("gold_zone_path")).getOrElse("gold_zone")),
     dedupKeyColumns = envOrConfigSeq("DEDUP_KEY_COLUMNS",
       Try(pipelineConfig.getStringList("dedup_key_columns").asScala).getOrElse(Seq("event_time", "user_id", "product_id", "event_type")))
   )
@@ -584,13 +572,10 @@ object AppConfig {
       Try(dlqConfig.getInt("poll_timeout_seconds")).getOrElse(1))
   )
 
-  // Pipeline paths (prefixed with MinIO base path)
-  val PIPELINE_BATCH_INVALID_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchInvalidPath}"
-  val PIPELINE_BATCH_DLQ_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchDlqPath}"
-  val PIPELINE_BATCH_LINEAGE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.batchLineagePath}"
-  val PIPELINE_STREAMING_INVALID_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingInvalidPath}"
-  val PIPELINE_STREAMING_DLQ_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingDlqPath}"
-  val PIPELINE_STREAMING_LINEAGE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.streamingLineagePath}"
+  // Medallion Architecture Zone paths (prefixed with MinIO base path)
+  val RAW_ZONE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.rawZonePath}"
+  val WORKING_ZONE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.workingZonePath}"
+  val GOLD_ZONE_PATH: String = s"$MINIO_BASE_PATH/${pipelineSettings.goldZonePath}"
 
   /**
    * Complete application configuration object.

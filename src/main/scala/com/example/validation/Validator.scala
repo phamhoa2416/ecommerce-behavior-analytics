@@ -73,21 +73,21 @@ object Validator {
     val validCount = counts.getLong(1)
     val invalidCount = counts.getLong(2)
 
+    val validationColumns = Seq(
+      "is_valid_price", "is_valid_event_type", "is_valid_product_id",
+      "is_valid_user_id", "is_valid_event_time", "is_valid_category_id",
+      "is_valid_record", "invalid_reasons"
+    )
+
     val validRecords = validated
       .filter(col("is_valid_record"))
-      .select(
-        col("event_time"),
-        col("event_type"),
-        col("product_id"),
-        col("category_id"),
+      .withColumn("category_code",
         when(col("category_code").isNull || col("category_code") === "", lit("unknown"))
-          .otherwise(col("category_code")).as("category_code"),
+          .otherwise(col("category_code")))
+      .withColumn("brand",
         when(col("brand").isNull || col("brand") === "", lit("unknown"))
-          .otherwise(col("brand")).as("brand"),
-        col("price"),
-        col("user_id"),
-        col("user_session")
-      )
+          .otherwise(col("brand")))
+      .drop(validationColumns: _*)
 
     val invalidRecords = validated
       .filter(!col("is_valid_record"))
