@@ -3,7 +3,7 @@ package com.example.main.batch
 import com.example.config.AppConfig
 import com.example.handler.RetryHandler
 import com.example.schema.Schema
-import com.example.util.{MinioUtils, SparkUtils}
+import com.example.util.{GcsUtils, SparkUtils}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.Trigger
 import org.apache.spark.sql.{DataFrame, SaveMode}
@@ -19,37 +19,38 @@ object RAW_ZONE {
   def main(args: Array[String]): Unit = {
     val spark = SparkUtils.createSparkSession("Raw Zone")
 
-    val minioBucketName = AppConfig.MINIO_BUCKET_NAME
-    val rawPath = AppConfig.RAW_ZONE_PATH
+    val gcsSettings = AppConfig.applicationConfig.gcs.getOrElse(
+      throw new IllegalStateException("GCS configuration is required")
+    )
+    val gcsBucketName = gcsSettings.bucketName
+    val rawPath = s"${gcsSettings.basePath}/raw_zone"
     val topic = AppConfig.KAFKA_BATCH_TOPIC
     val checkpointPath = AppConfig.KAFKA_CHECKPOINT_LOCATION
 
     try {
       RetryHandler.withRetry(
-        MinioUtils.configureMinIO(
+        GcsUtils.configureGcs(
           spark,
-          AppConfig.MINIO_ENDPOINT,
-          AppConfig.MINIO_ACCESS_KEY,
-          AppConfig.MINIO_SECRET_KEY,
-          AppConfig.MINIO_PATH_STYLE_ACCESS),
-        name = "MinIO Configuration"
+          gcsSettings.projectId,
+          gcsSettings.credentialsPath),
+        name = "GCS Configuration"
       ) match {
-        case Success(_) => logger.info("MinIO configured successfully")
+        case Success(_) => logger.info("GCS configured successfully")
         case Failure(exception) =>
-          logger.error("Failed to configure MinIO", exception)
+          logger.error("Failed to configure GCS", exception)
           sys.exit(1)
       }
 
       RetryHandler.withRetry(
-        MinioUtils.checkBucketExists(
-          AppConfig.MINIO_ENDPOINT,
-          AppConfig.MINIO_ACCESS_KEY,
-          AppConfig.MINIO_SECRET_KEY, minioBucketName),
-        name = "MinIO Bucket Check/Create"
+        GcsUtils.checkBucketExists(
+          gcsSettings.projectId,
+          gcsBucketName,
+          gcsSettings.credentialsPath),
+        name = "GCS Bucket Check/Create"
       ) match {
-        case Success(_) => logger.info(s"MinIO bucket '$minioBucketName' is ready")
+        case Success(_) => logger.info(s"GCS bucket '$gcsBucketName' is ready")
         case Failure(exception) =>
-          logger.error(s"Error while checking/creating MinIO bucket '$minioBucketName'", exception)
+          logger.error(s"Error while checking/creating GCS bucket '$gcsBucketName'", exception)
           sys.exit(1)
       }
 
@@ -79,7 +80,7 @@ object RAW_ZONE {
         .foreachBatch { (batchDf: DataFrame, batchId: Long) =>
           if (!batchDf.isEmpty) {
             logger.info(s"Processing batch $batchId")
-            writeToRawZone(batchDf, minioBucketName, rawPath) match {
+            writeToRawZone(batchDf, gcsBucketName, rawPath) match {
               case Success(_) =>
                 logger.info(s"Batch $batchId: Raw Zone write completed successfully")
               case Failure(ex) =>
@@ -109,10 +110,10 @@ object RAW_ZONE {
                               bucket: String,
                               path: String
                             ): scala.util.Try[Unit] = {
-    logger.info("Writing CDC raw data to MinIO")
+    logger.info("Writing CDC raw data to GCS")
 
     RetryHandler.withRetry(
-      MinioUtils.writeDeltaTable(
+      GcsUtils.writeDeltaTable(
         df = df,
         bucketName = bucket,
         path = path,

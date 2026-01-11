@@ -4,7 +4,7 @@ import com.example.config.AppConfig
 import com.example.handler.RetryHandler
 import com.example.parser.Parser
 import com.example.schema.Schema
-import com.example.util.{ClickHouseUtils, MinioUtils, SparkUtils}
+import com.example.util.{ClickHouseUtils, GcsUtils, SparkUtils}
 import com.example.validation.Validator
 import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
@@ -22,19 +22,22 @@ object STREAMING {
     val spark = SparkUtils.createSparkSession("Streaming")
 
     val dedupKeyColumns = AppConfig.applicationConfig.pipeline.dedupKeyColumns
+
+    val gcsSettings = AppConfig.applicationConfig.gcs.getOrElse(
+      throw new IllegalStateException("GCS configuration is required. Please configure 'gcs' block in application.conf")
+    )
+
     RetryHandler.withRetry(
-      MinioUtils.configureMinIO(
+      GcsUtils.configureGcs(
         spark,
-        AppConfig.MINIO_ENDPOINT,
-        AppConfig.MINIO_ACCESS_KEY,
-        AppConfig.MINIO_SECRET_KEY,
-        AppConfig.MINIO_PATH_STYLE_ACCESS
+        gcsSettings.projectId,
+        gcsSettings.credentialsPath
       ),
-      name = "MinIO Configuration"
+      name = "GCS Configuration"
     ) match {
-      case Success(_) => logger.info("MinIO configured successfully")
+      case Success(_) => logger.info("GCS configured successfully")
       case Failure(exception) =>
-        logger.error("Failed to configure MinIO", exception)
+        logger.error("Failed to configure GCS", exception)
         sys.exit(1)
     }
 

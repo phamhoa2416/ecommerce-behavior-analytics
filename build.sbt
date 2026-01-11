@@ -6,6 +6,7 @@ lazy val root = (project in file("."))
     name := "ecommerce-behavior-analysis",
 
     Compile / resourceDirectory := baseDirectory.value / "src" / "main" / "resources",
+    dependencyOverrides += "com.github.luben" % "zstd-jni" % "1.5.5-11",
 
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-core" % "3.5.1",
@@ -22,7 +23,11 @@ lazy val root = (project in file("."))
 
       "com.clickhouse" % "clickhouse-jdbc" % "0.6.4",
       "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.1",
-      "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.1"
+      "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.1",
+
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.22" exclude("com.google.guava", "guava"),
+      "com.google.cloud" % "google-cloud-storage" % "2.36.1",
+      "com.google.cloud.spark" %% "spark-bigquery" % "0.38.0"
     ),
 
     assembly / mainClass := Some("com.example.main.streaming.STREAMING"),

@@ -2,7 +2,7 @@ package com.example.main.batch
 
 import com.example.config.AppConfig
 import com.example.handler.RetryHandler
-import com.example.util.{MinioUtils, SparkUtils}
+import com.example.util.{GcsUtils, SparkUtils}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 import org.slf4j.LoggerFactory
@@ -18,47 +18,47 @@ object GOLD_ZONE {
   def main(args: Array[String]): Unit = {
     val spark = SparkUtils.createSparkSession("Gold Zone")
 
-    val minioBucketName = AppConfig.MINIO_BUCKET_NAME
-    val workingPath = AppConfig.WORKING_ZONE_PATH
-    val goldBasePath = AppConfig.GOLD_ZONE_PATH
+    val gcsSettings = AppConfig.applicationConfig.gcs.getOrElse(
+      throw new IllegalStateException("GCS configuration is required.")
+    )
+    val gcsBucketName = gcsSettings.bucketName
+    val workingPath = s"${gcsSettings.basePath}/working_zone"
+    val goldBasePath = s"${gcsSettings.basePath}/gold_zone"
 
     val processingDate = if (args.nonEmpty) args(0) else LocalDate.now().toString
 
     try {
-      // Configure MinIO connection
+      // Configure GCS connection
       RetryHandler.withRetry(
-        MinioUtils.configureMinIO(
+        GcsUtils.configureGcs(
           spark,
-          AppConfig.MINIO_ENDPOINT,
-          AppConfig.MINIO_ACCESS_KEY,
-          AppConfig.MINIO_SECRET_KEY,
-          AppConfig.MINIO_PATH_STYLE_ACCESS),
-        name = "MinIO Configuration"
+          gcsSettings.projectId,
+          gcsSettings.credentialsPath),
+        name = "GCS Configuration"
       ) match {
-        case Success(_) => logger.info("MinIO configured successfully")
+        case Success(_) => logger.info("GCS configured successfully")
         case Failure(exception) =>
-          logger.error("Failed to configure MinIO", exception)
+          logger.error("Failed to configure GCS", exception)
           sys.exit(1)
       }
 
       RetryHandler.withRetry(
-        MinioUtils.checkBucketExists(
-          AppConfig.MINIO_ENDPOINT,
-          AppConfig.MINIO_ACCESS_KEY,
-          AppConfig.MINIO_SECRET_KEY,
-          minioBucketName),
-        name = "MinIO Bucket Check/Create"
+        GcsUtils.checkBucketExists(
+          gcsSettings.projectId,
+          gcsBucketName,
+          gcsSettings.credentialsPath),
+        name = "GCS Bucket Check/Create"
       ) match {
-        case Success(_) => logger.info(s"MinIO bucket '$minioBucketName' is ready")
+        case Success(_) => logger.info(s"GCS bucket '$gcsBucketName' is ready")
         case Failure(exception) =>
-          logger.error(s"Error while checking/creating MinIO bucket '$minioBucketName'", exception)
+          logger.error(s"Error while checking/creating GCS bucket '$gcsBucketName'", exception)
           sys.exit(1)
       }
 
       logger.info(s"Reading Working Zone for event_date = $processingDate")
       val workingDf = Try(
         spark.read.format("delta")
-          .load(s"s3a://$minioBucketName/$workingPath")
+          .load(s"gs://$gcsBucketName/$workingPath")
           .filter(col("event_date") === lit(processingDate))
       ) match {
         case Success(df) =>
@@ -81,9 +81,9 @@ object GOLD_ZONE {
 
       logger.info(s"Read $recordCount records from Working Zone")
 
-      processFactEvents(spark, cachedWorkingDf, minioBucketName, goldBasePath, processingDate)
-      computeDailyEventsAgg(spark, cachedWorkingDf, minioBucketName, goldBasePath, processingDate)
-      computeProductDailyAgg(spark, cachedWorkingDf, minioBucketName, goldBasePath, processingDate)
+      processFactEvents(spark, cachedWorkingDf, gcsBucketName, goldBasePath, processingDate)
+      computeDailyEventsAgg(spark, cachedWorkingDf, gcsBucketName, goldBasePath, processingDate)
+      computeProductDailyAgg(spark, cachedWorkingDf, gcsBucketName, goldBasePath, processingDate)
 
       cachedWorkingDf.unpersist()
       logger.info("Gold Zone batch job completed successfully")
@@ -126,7 +126,7 @@ object GOLD_ZONE {
     val factPath = s"$goldBasePath/fact_events"
 
     RetryHandler.withRetry(
-      MinioUtils.writeDeltaTable(
+      GcsUtils.writeDeltaTable(
         df = factDf,
         bucketName = bucket,
         path = factPath,
@@ -171,7 +171,7 @@ object GOLD_ZONE {
     val aggPath = s"$goldBasePath/agg_daily_events"
 
     RetryHandler.withRetry(
-      MinioUtils.writeDeltaTable(
+      GcsUtils.writeDeltaTable(
         df = dailyAgg,
         bucketName = bucket,
         path = aggPath,
@@ -241,7 +241,7 @@ object GOLD_ZONE {
     val aggPath = s"$goldBasePath/agg_product_daily"
 
     RetryHandler.withRetry(
-      MinioUtils.writeDeltaTable(
+      GcsUtils.writeDeltaTable(
         df = productDailyAgg,
         bucketName = bucket,
         path = aggPath,

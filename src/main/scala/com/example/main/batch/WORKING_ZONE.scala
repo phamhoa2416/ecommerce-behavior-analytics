@@ -2,7 +2,7 @@ package com.example.main.batch
 
 import com.example.config.AppConfig
 import com.example.handler.RetryHandler
-import com.example.util.{MinioUtils, SparkUtils}
+import com.example.util.{GcsUtils, SparkUtils}
 import com.example.validation.Validator
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.functions._
@@ -20,46 +20,47 @@ object WORKING_ZONE {
   def main(args: Array[String]): Unit = {
     val spark = SparkUtils.createSparkSession("Working Zone")
 
-    val minioBucketName = AppConfig.MINIO_BUCKET_NAME
-    val rawPath = AppConfig.RAW_ZONE_PATH
-    val workingPath = AppConfig.WORKING_ZONE_PATH
+    val gcsSettings = AppConfig.applicationConfig.gcs.getOrElse(
+      throw new IllegalStateException("GCS configuration is required.")
+    )
+    val gcsBucketName = gcsSettings.bucketName
+    val rawPath = s"${gcsSettings.basePath}/raw_zone"
+    val workingPath = s"${gcsSettings.basePath}/working_zone"
     val dedupKeyColumns = AppConfig.applicationConfig.pipeline.dedupKeyColumns
 
     val processingDate = if (args.nonEmpty) args(0) else LocalDate.now().toString
 
     try {
       RetryHandler.withRetry(
-        MinioUtils.configureMinIO(
+        GcsUtils.configureGcs(
           spark,
-          AppConfig.MINIO_ENDPOINT,
-          AppConfig.MINIO_ACCESS_KEY,
-          AppConfig.MINIO_SECRET_KEY,
-          AppConfig.MINIO_PATH_STYLE_ACCESS),
-        name = "MinIO Configuration"
+          gcsSettings.projectId,
+          gcsSettings.credentialsPath),
+        name = "GCS Configuration"
       ) match {
-        case Success(_) => logger.info("MinIO configured successfully")
+        case Success(_) => logger.info("GCS configured successfully")
         case Failure(exception) =>
-          logger.error("Failed to configure MinIO", exception)
+          logger.error("Failed to configure GCS", exception)
           sys.exit(1)
       }
 
       RetryHandler.withRetry(
-        MinioUtils.checkBucketExists(
-          AppConfig.MINIO_ENDPOINT,
-          AppConfig.MINIO_ACCESS_KEY,
-          AppConfig.MINIO_SECRET_KEY, minioBucketName),
-        name = "MinIO Bucket Check/Create"
+        GcsUtils.checkBucketExists(
+          gcsSettings.projectId,
+          gcsBucketName,
+          gcsSettings.credentialsPath),
+        name = "GCS Bucket Check/Create"
       ) match {
-        case Success(_) => logger.info(s"MinIO bucket '$minioBucketName' is ready")
+        case Success(_) => logger.info(s"GCS bucket '$gcsBucketName' is ready")
         case Failure(exception) =>
-          logger.error(s"Error while checking/creating MinIO bucket '$minioBucketName'", exception)
+          logger.error(s"Error while checking/creating GCS bucket '$gcsBucketName'", exception)
           sys.exit(1)
       }
 
       logger.info(s"Reading Raw Zone for ingestion_date = $processingDate")
       val rawDf = Try(
         spark.read.format("delta")
-          .load(s"s3a://$minioBucketName/$rawPath")
+          .load(s"gs://$gcsBucketName/$rawPath")
           .filter(col("ingestion_date") === lit(processingDate))
       ) match {
         case Success(df) =>
@@ -124,11 +125,11 @@ object WORKING_ZONE {
         .withColumn("event_date", to_date(col("event_time")))
         .withColumn("event_key", concat_ws("|", dedupKeyColumns.map(c => col(c)): _*))
 
-      val tableExists = Try(DeltaTable.forPath(spark, s"s3a://$minioBucketName/$workingPath")).isSuccess
+      val tableExists = Try(DeltaTable.forPath(spark, s"gs://$gcsBucketName/$workingPath")).isSuccess
 
       val writeResult = if (tableExists) {
         logger.info("Working Zone table exists, using merge for CDC deduplication")
-        val deltaTable = DeltaTable.forPath(spark, s"s3a://$minioBucketName/$workingPath")
+        val deltaTable = DeltaTable.forPath(spark, s"gs://$gcsBucketName/$workingPath")
 
         RetryHandler.withRetry(
           Try {
@@ -148,9 +149,9 @@ object WORKING_ZONE {
       } else {
         logger.info("Working Zone table does not exist, creating with initial data")
         RetryHandler.withRetry(
-          MinioUtils.writeDeltaTable(
+          GcsUtils.writeDeltaTable(
             df = preparedDf,
-            bucketName = minioBucketName,
+            bucketName = gcsBucketName,
             path = workingPath,
             saveMode = SaveMode.Overwrite,
             partitionColumns = Some(Seq("event_date")),

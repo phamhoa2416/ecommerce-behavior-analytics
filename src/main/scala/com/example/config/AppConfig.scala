@@ -61,6 +61,21 @@ object AppConfig {
   )
 
   /**
+   * Google Cloud Storage (GCS) configuration.
+   * 
+   * @param projectId GCP project ID
+   * @param bucketName GCS bucket name for data storage
+   * @param basePath Base path prefix within the bucket
+   * @param credentialsPath Optional path to service account JSON key file
+   */
+  final case class GcsSettings(
+    projectId: String,
+    bucketName: String,
+    basePath: String,
+    credentialsPath: Option[String] = None
+  )
+
+  /**
    * ClickHouse database connection configuration.
    * 
    * @param url JDBC connection URL for ClickHouse
@@ -246,6 +261,7 @@ object AppConfig {
    * 
    * @param kafka Kafka configuration
    * @param minio MinIO storage configuration
+   * @param gcs Optional GCS storage configuration (alternative to MinIO)
    * @param clickhouse ClickHouse database configuration
    * @param spark Spark application configuration
    * @param ml Machine learning model configurations
@@ -256,6 +272,7 @@ object AppConfig {
   final case class ApplicationConfig(
     kafka: KafkaSettings,
     minio: MinioSettings,
+    gcs: Option[GcsSettings] = None,
     clickhouse: ClickhouseSettings,
     spark: SparkSettings,
     ml: SparkMLConfig,
@@ -286,6 +303,7 @@ object AppConfig {
   // Extract configuration sections from the main config
   private val kafkaConfig = config.getConfig("kafka")
   private val minioConfig = config.getConfig("minio")
+  private val gcsConfig = Try(config.getConfig("gcs")).toOption
   private val clickhouseConfig = config.getConfig("clickhouse")
   private val sparkConfig = config.getConfig("spark")
   private val sparkMlConfig = config.getConfig("ml")
@@ -402,6 +420,17 @@ object AppConfig {
     basePath = envOrConfig("MINIO_BASE_PATH", minioConfig.getString("base_path")),
     pathStyleAccess = envOrConfig("MINIO_PATH_STYLE_ACCESS", minioConfig.getString("path_style_access"))
   )
+
+  // GCS settings (optional, alternative to MinIO)
+  private val gcsSettings: Option[GcsSettings] = gcsConfig.map { cfg =>
+    GcsSettings(
+      projectId = envOrConfig("GCS_PROJECT_ID", cfg.getString("project_id")),
+      bucketName = envOrConfig("GCS_BUCKET_NAME", cfg.getString("bucket_name")),
+      basePath = envOrConfig("GCS_BASE_PATH", cfg.getString("base_path")),
+      credentialsPath = sys.env.get("GOOGLE_APPLICATION_CREDENTIALS")
+        .orElse(Try(cfg.getString("credentials_path")).toOption)
+    )
+  }
 
   /**
    * ClickHouse settings (publicly accessible for connection initialization).
@@ -588,6 +617,7 @@ object AppConfig {
     ApplicationConfig(
       kafkaSettings,
       minioSettings,
+      gcsSettings,
       clickhouseSettings,
       sparkSettings,
       sparkMlSettings,
