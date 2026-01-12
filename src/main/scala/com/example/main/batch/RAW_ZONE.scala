@@ -54,9 +54,10 @@ object RAW_ZONE {
           sys.exit(1)
       }
 
+      val kafkaOptions = AppConfig.getKafkaOptions
       val kafkaDf = spark.readStream
         .format("kafka")
-        .option("kafka.bootstrap.servers", AppConfig.KAFKA_BOOTSTRAP_SERVERS)
+        .options(kafkaOptions)
         .option("subscribe", topic)
         .option("startingOffsets", "earliest")
         .option("failOnDataLoss", "false")
@@ -73,6 +74,7 @@ object RAW_ZONE {
         )
         .withColumn("ingestion_ts", current_timestamp())
         .withColumn("ingestion_date", to_date(col("ingestion_ts")))
+        .filter(col("data.op").isNotNull && col("data.op") =!= "d")
 
       val query = rawDf.writeStream
         .trigger(Trigger.Once())

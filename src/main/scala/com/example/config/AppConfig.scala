@@ -32,6 +32,10 @@ object AppConfig {
    * @param streamTopic Kafka topic name for streaming processing
    * @param checkpointLocation Path for Spark checkpoint directory
    * @param startingOffsets Starting offset strategy (e.g., "earliest", "latest", or JSON)
+   * @param securityProtocol Security protocol (e.g., "PLAINTEXT", "SASL_SSL")
+   * @param saslMechanism SASL mechanism (e.g., "PLAIN", "SCRAM-SHA-256")
+   * @param saslUsername SASL username for authentication
+   * @param saslPassword SASL password for authentication
    */
   final case class KafkaSettings(
     bootstrapServers: String,
@@ -39,6 +43,10 @@ object AppConfig {
     streamTopic: String,
     checkpointLocation: String,
     startingOffsets: String,
+    securityProtocol: Option[String] = None,
+    saslMechanism: Option[String] = None,
+    saslUsername: Option[String] = None,
+    saslPassword: Option[String] = None,
   )
 
   /**
@@ -405,7 +413,15 @@ object AppConfig {
     batchTopic = envOrConfig("KAFKA_TOPIC", kafkaConfig.getString("batch_topic")),
     streamTopic = envOrConfig("KAFKA_STREAM_TOPIC", kafkaConfig.getString("stream_topic")),
     checkpointLocation = envOrConfig("KAFKA_CHECKPOINT_LOCATION", kafkaConfig.getString("checkpoint_location")),
-    startingOffsets = envOrConfig("KAFKA_STARTING_OFFSETS", kafkaConfig.getString("starting_offsets"))
+    startingOffsets = envOrConfig("KAFKA_STARTING_OFFSETS", kafkaConfig.getString("starting_offsets")),
+    securityProtocol = sys.env.get("KAFKA_SECURITY_PROTOCOL")
+      .orElse(Try(kafkaConfig.getString("security_protocol")).toOption),
+    saslMechanism = sys.env.get("KAFKA_SASL_MECHANISM")
+      .orElse(Try(kafkaConfig.getString("sasl_mechanism")).toOption),
+    saslUsername = sys.env.get("KAFKA_SASL_USERNAME")
+      .orElse(Try(kafkaConfig.getString("sasl_username")).toOption),
+    saslPassword = sys.env.get("KAFKA_SASL_PASSWORD")
+      .orElse(Try(kafkaConfig.getString("sasl_password")).toOption)
   )
 
   private val minioSettings: MinioSettings = MinioSettings(
@@ -507,6 +523,49 @@ object AppConfig {
   if (sparkMlSettings.cls.useTopNBucketing) {
     require(sparkMlSettings.cls.topNCategories + 1 <= sparkMlSettings.cls.maxBins,
       s"topNCategories (${sparkMlSettings.cls.topNCategories}) + 1 must be <= maxBins (${sparkMlSettings.cls.maxBins}) to accommodate 'other' bucket")
+  }
+
+  /**
+   * Builds Kafka options map for Spark Kafka connector.
+   * 
+   * Returns a map of Kafka options including bootstrap servers and SASL configuration
+   * if security protocol is configured. This method should be used when creating
+   * Kafka DataFrames in Spark.
+   * 
+   * @return Map of Kafka options for Spark
+   */
+  def getKafkaOptions: Map[String, String] = {
+    var options = Map[String, String](
+      "kafka.bootstrap.servers" -> kafkaSettings.bootstrapServers
+    )
+    
+    // Add SASL configuration if security protocol is set
+    kafkaSettings.securityProtocol.foreach { protocol =>
+      options += "kafka.security.protocol" -> protocol
+      
+      // Add SASL mechanism and credentials if provided
+      kafkaSettings.saslMechanism.foreach { mechanism =>
+        options += "kafka.sasl.mechanism" -> mechanism
+        
+        // Build JAAS config for PLAIN mechanism
+        (kafkaSettings.saslUsername, kafkaSettings.saslPassword) match {
+          case (Some(username), Some(password)) => {
+            val jaasConfig =
+              s"""org.apache.kafka.common.security.plain.PlainLoginModule required
+                 |username="$username"
+                 |password="$password";
+                 |""".stripMargin
+
+            options += "kafka.sasl.jaas.config" -> jaasConfig
+          }
+
+          case _ =>
+            logger.warn("SASL mechanism is set but username/password are missing. Authentication may fail.")
+        }
+      }
+    }
+    
+    options
   }
 
   /**

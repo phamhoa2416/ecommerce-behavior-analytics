@@ -44,9 +44,8 @@ object Schema {
   /**
    * Schema for CDC (Change Data Capture) events from Debezium.
    * 
-   * This schema represents the payload structure of CDC events, where data types
-   * are already in their native formats (Long, Binary, etc.) as captured by Debezium.
-   * Includes additional CDC metadata fields for tracking changes.
+   * This schema represents the data structure within before/after fields of CDC events.
+   * Data types are in their native formats (Long, String, etc.) as captured by Debezium.
    * 
    * Fields:
    * - id: Database record ID (integer)
@@ -54,51 +53,64 @@ object Schema {
    * - event_type: Type of event (string)
    * - product_id: Product identifier (long)
    * - category_id: Category identifier (long)
-   * - category_code: Category code (string)
+   * - category_code: Category code (string, nullable)
    * - brand: Brand name (string)
-   * - price: Price stored as binary (will be converted to decimal)
+   * - price: Price stored as base64-encoded binary string (will be converted to decimal)
    * - user_id: User identifier (long)
    * - user_session: Session identifier (string)
-   * - __deleted: Debezium deletion flag (string)
-   * - __op: Debezium operation type (c=create, u=update, d=delete) (string)
-   * - __source_ts_ms: Source timestamp in milliseconds (long)
    */
   val schemaCDC = StructType(
     Seq(
-      StructField("id", IntegerType),
-      StructField("event_time", LongType),
-      StructField("event_type", StringType),
-      StructField("product_id", LongType),
-      StructField("category_id", LongType),
-      StructField("category_code", StringType),
-      StructField("brand", StringType),
-      StructField("price", BinaryType),
-      StructField("user_id", LongType),
-      StructField("user_session", StringType),
-      StructField("__deleted", StringType),
-      StructField("__op", StringType),
-      StructField("__source_ts_ms", LongType)
+      StructField("id", IntegerType, nullable = true),
+      StructField("event_time", LongType, nullable = true),
+      StructField("event_type", StringType, nullable = true),
+      StructField("product_id", LongType, nullable = true),
+      StructField("category_id", LongType, nullable = true),
+      StructField("category_code", StringType, nullable = true),
+      StructField("brand", StringType, nullable = true),
+      StructField("price", StringType, nullable = true), // Base64-encoded binary in JSON
+      StructField("user_id", LongType, nullable = true),
+      StructField("user_session", StringType, nullable = true)
+    )
+  )
+
+  /**
+   * Schema for Debezium source metadata.
+   * Contains information about the source database and transaction.
+   */
+  val debeziumSource = StructType(
+    Seq(
+      StructField("version", StringType, nullable = true),
+      StructField("connector", StringType, nullable = true),
+      StructField("name", StringType, nullable = true),
+      StructField("ts_ms", LongType, nullable = true),
+      StructField("snapshot", StringType, nullable = true),
+      StructField("db", StringType, nullable = true),
+      StructField("sequence", StringType, nullable = true),
+      StructField("schema", StringType, nullable = true),
+      StructField("table", StringType, nullable = true),
+      StructField("txId", LongType, nullable = true),
+      StructField("lsn", LongType, nullable = true),
+      StructField("xmin", LongType, nullable = true)
     )
   )
 
   /**
    * Complete Debezium CDC envelope schema.
    * 
-   * This schema represents the full Debezium message structure, which includes:
-   * - schema: Metadata about the schema structure
-   * - payload: The actual data payload (using schemaCDC)
-   * 
-   * The schema field contains type information and field metadata, while the payload
-   * contains the actual event data conforming to schemaCDC.
+   * This schema represents the actual Debezium message structure from PostgreSQL connector:
+   * - before: Previous state of the record (null for inserts/reads, contains data for updates/deletes)
+   * - after: New state of the record (null for deletes, contains data for inserts/updates/reads)
+   * - source: Metadata about the source database and transaction
+   * - op: Operation type (c=create, u=update, d=delete, r=read/snapshot)
+   * - ts_ms: Timestamp in milliseconds
+   * - transaction: Transaction metadata (nullable)
    */
   val debeziumCDC = new StructType()
-    .add("schema", new StructType()
-      .add("type", StringType)
-      .add("fields", ArrayType(new StructType()
-        .add("type", StringType)
-        .add("optional", StringType)
-        .add("field", StringType)))
-      .add("optional", StringType)
-      .add("name", StringType))
-    .add("payload", schemaCDC)
+    .add("before", schemaCDC, nullable = true)
+    .add("after", schemaCDC, nullable = true)
+    .add("source", debeziumSource, nullable = true)
+    .add("op", StringType, nullable = true) // c=create, u=update, d=delete, r=read
+    .add("ts_ms", LongType, nullable = true)
+    .add("transaction", StringType, nullable = true)
 }

@@ -6,7 +6,13 @@ lazy val root = (project in file("."))
     name := "ecommerce-behavior-analysis",
 
     Compile / resourceDirectory := baseDirectory.value / "src" / "main" / "resources",
-    dependencyOverrides += "com.github.luben" % "zstd-jni" % "1.5.5-11",
+    dependencyOverrides ++= Seq(
+      "com.github.luben" % "zstd-jni" % "1.5.5-11",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.2",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.2",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.2",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.2"
+    ),
 
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-core" % "3.5.1",
@@ -25,9 +31,19 @@ lazy val root = (project in file("."))
       "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.1",
       "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.1",
 
-      "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.22" exclude("com.google.guava", "guava"),
-      "com.google.cloud" % "google-cloud-storage" % "2.36.1",
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.22"
+        exclude("com.google.guava", "guava")
+        exclude("com.fasterxml.jackson.core", "jackson-databind")
+        exclude("com.fasterxml.jackson.core", "jackson-core")
+        exclude("com.fasterxml.jackson.core", "jackson-annotations"),
+      "com.google.cloud" % "google-cloud-storage" % "2.36.1"
+        exclude("com.fasterxml.jackson.core", "jackson-databind")
+        exclude("com.fasterxml.jackson.core", "jackson-core")
+        exclude("com.fasterxml.jackson.core", "jackson-annotations"),
       "com.google.cloud.spark" %% "spark-bigquery" % "0.38.0"
+        exclude("com.fasterxml.jackson.core", "jackson-databind")
+        exclude("com.fasterxml.jackson.core", "jackson-core")
+        exclude("com.fasterxml.jackson.core", "jackson-annotations")
     ),
 
     assembly / mainClass := Some("com.example.main.streaming.STREAMING"),

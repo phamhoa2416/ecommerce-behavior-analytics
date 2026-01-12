@@ -84,15 +84,17 @@ object WORKING_ZONE {
       logger.info(s"Read $recordCount records from Raw Zone")
 
       val parsedDf = cachedRawDf.select(
-          col("data.payload.event_time").alias("event_time_raw"),
-          col("data.payload.event_type"),
-          col("data.payload.product_id"),
-          col("data.payload.category_id"),
-          col("data.payload.category_code"),
-          col("data.payload.brand"),
-          col("data.payload.price").alias("price_raw"),
-          col("data.payload.user_id"),
-          col("data.payload.user_session"),
+          col("data.after.event_time").alias("event_time_raw"),
+          col("data.after.event_type"),
+          col("data.after.product_id"),
+          col("data.after.category_id"),
+          col("data.after.category_code"),
+          col("data.after.brand"),
+          col("data.after.price").alias("price_raw"),
+          col("data.after.user_id"),
+          col("data.after.user_session"),
+          col("data.op").alias("cdc_op"),
+          col("data.ts_ms").alias("cdc_ts_ms"),
           col("topic"),
           col("partition").alias("kafka_partition"),
           col("offset").alias("kafka_offset"),
@@ -100,11 +102,15 @@ object WORKING_ZONE {
           col("ingestion_ts"),
           col("ingestion_date")
         )
+        .filter(col("event_time_raw").isNotNull) // Filter out null after records
         .withColumn("event_time", timestamp_micros(col("event_time_raw")))
         .drop("event_time_raw")
         .withColumn(
           "price",
-          (conv(hex(col("price_raw")), 16, 10).cast("int") / 100.0).cast("decimal(10, 2)")
+          // Price is base64-encoded binary string, decode and convert
+          when(col("price_raw").isNotNull && col("price_raw") =!= "",
+            (conv(hex(unbase64(col("price_raw"))), 16, 10).cast("int") / 100.0).cast("decimal(10, 2)")
+          ).otherwise(lit(null).cast("decimal(10, 2)"))
         )
         .drop("price_raw")
 

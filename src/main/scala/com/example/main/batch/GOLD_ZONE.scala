@@ -55,7 +55,7 @@ object GOLD_ZONE {
           sys.exit(1)
       }
 
-      logger.info(s"Reading Working Zone for event_date = $processingDate")
+      logger.info(s"Reading Working Zone for ingestion_date = $processingDate")
       val workingDf = Try(
         spark.read.format("delta")
           .load(s"gs://$gcsBucketName/$workingPath")

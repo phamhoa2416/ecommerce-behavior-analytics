@@ -54,9 +54,10 @@ object STREAMING {
         sys.exit(1)
     }
 
+    val kafkaOptions = AppConfig.getKafkaOptions
     val kafkaDf = spark.readStream
       .format("kafka")
-      .option("kafka.bootstrap.servers", AppConfig.KAFKA_BOOTSTRAP_SERVERS)
+      .options(kafkaOptions)
       .option("subscribe", AppConfig.KAFKA_STREAM_TOPIC)
       .option("startingOffsets", AppConfig.KAFKA_STARTING_OFFSETS)
       .option("failOnDataLoss", "false")
@@ -143,9 +144,10 @@ object STREAMING {
           to_json(struct(df.columns.map(col): _*)).alias("value")
         )
 
+      val kafkaOptions = AppConfig.getKafkaOptions
       dlqDf.write
         .format("kafka")
-        .option("kafka.bootstrap.servers", AppConfig.KAFKA_BOOTSTRAP_SERVERS)
+        .options(kafkaOptions)
         .option("topic", DLQ_TOPIC)
         .save()
 
