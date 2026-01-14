@@ -1,5 +1,0 @@
-apiVersion: v2
-name: hive-metastore
-version: 1.0.0
-description: Hive Metastore on Kubernetes
-type: application
