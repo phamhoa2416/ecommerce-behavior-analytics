@@ -15,8 +15,9 @@ ENV DOCKERIZE_VERSION=v0.6.1
 RUN curl -L https://github.com/jwilder/dockerize/releases/download/${DOCKERIZE_VERSION}/dockerize-linux-amd64-${DOCKERIZE_VERSION}.tar.gz \
     | tar -C /usr/local/bin -xz
 
-RUN uv pip install \
+RUN pip install \
     clickhouse-connect>=0.6.8 \
+    sqlalchemy-bigquery \
     SQLAlchemy==1.4.46 \
     trino \
     psycopg2-binary
